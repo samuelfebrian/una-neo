@@ -102,11 +102,12 @@ export function LessonPlayer({
   const renderStepContent = (step: Step) => {
     switch (step.contentType) {
       case 'bx_videos':
+        if (!step.video?.src) return null;
         return (
           <div className="space-y-4">
             <VideoPlayer
-              src={step.video?.src || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
-              poster={step.video?.poster}
+              src={step.video.src}
+              poster={step.video.poster}
               title={step.title}
               onEnded={() => !step.passed && onPassStep?.(step.id)}
             />
@@ -142,9 +143,9 @@ export function LessonPlayer({
             {step.textHtml && <RichText html={step.textHtml} className="text-xs" />}
 
             <div className="space-y-2.5 pt-2">
-              {['Option A: Event-driven pub/sub architecture', 'Option B: Synchronous REST endpoint polling', 'Option C: Shared distributed in-memory cache'].map((opt, i) => (
+              {step.options?.map((opt) => (
                 <button
-                  key={i}
+                  key={opt}
                   type="button"
                   onClick={() => setPollVotedOption(opt)}
                   className={`w-full text-left p-3.5 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
@@ -174,15 +175,10 @@ export function LessonPlayer({
       case 'bx_classes':
       case 'bx_posts':
       default:
+        if (!step.textHtml) return null;
         return (
           <div className="space-y-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
-            {step.textHtml ? (
-              <RichText html={step.textHtml} />
-            ) : (
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Review the technical documentation and instructions for this milestone.
-              </p>
-            )}
+            <RichText html={step.textHtml} />
           </div>
         );
     }
@@ -245,8 +241,10 @@ export function LessonPlayer({
               iconSlot={iconSlot}
             />
           ) : (
-            <div className="text-xs text-slate-400 py-4 text-center">
-              Outline loaded
+            <div className="py-4 space-y-2.5" aria-hidden="true">
+              {['w-11/12', 'w-10/12', 'w-9/12', 'w-10/12', 'w-8/12'].map((w, i) => (
+                <div key={i} className={`h-3 rounded bg-slate-100 dark:bg-slate-800 ${w}`} />
+              ))}
             </div>
           )}
         </div>
@@ -364,7 +362,7 @@ export function LessonPlayer({
             <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Upcoming Module
+                  Next Lesson
                 </span>
                 <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
                   {lesson.next.title}
@@ -421,8 +419,9 @@ export function LessonPlayer({
         </div>
       </div>
 
-      {/* Bottom Sticky Action Bar */}
-      <div className="sticky bottom-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 py-3 px-4 rounded-xl flex items-center justify-between shadow-lg">
+      {/* Bottom Sticky Action Bar (hidden when the lesson has neither neighbour) */}
+      {(lesson.prev?.nodeId || lesson.next?.nodeId) && (
+        <div className="sticky bottom-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 py-3 px-4 rounded-xl flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-2">
           {lesson.prev && onPrevLesson && (
             <Button
@@ -452,6 +451,7 @@ export function LessonPlayer({
           )}
         </div>
       </div>
+      )}
 
       {/* Mobile Outline Drawer Modal */}
       <Modal

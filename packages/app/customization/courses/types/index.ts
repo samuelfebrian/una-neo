@@ -55,6 +55,7 @@ export type Step = {
   passed: boolean;
   locked: boolean;
   passTitle?: string;            // 'Pass' | 'Continue' | …
+  options?: string[];            // real poll choices when the payload carries them
 };
 
 export type Lesson = {

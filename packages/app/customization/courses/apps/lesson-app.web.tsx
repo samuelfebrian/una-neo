@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import LessonPlayer from '../screens/LessonPlayer';
 import type { Lesson as LessonType, OutlineItem, Step } from '../types';
 import { coursesApi } from '../api';
@@ -17,6 +17,25 @@ export default function LessonApp(props: LessonAppProps) {
     const [lesson, setLesson] = useState<LessonType | null>(null);
     const [outline, setOutline] = useState<{ courseId: number; isEditable: boolean; items: OutlineItem[] } | null>(null);
     const [slug, setSlug] = useState('');
+    const outlineRef = useRef<{ courseId: number; isEditable: boolean; items: OutlineItem[] } | null>(null);
+
+    // Attach the sequential prev/next lesson the player's bottom bar and teaser render.
+    const attachNav = useCallback(
+        (built: LessonType, o: { items: OutlineItem[] } | null): LessonType => {
+            const lessonItems = (o?.items ?? []).filter((i) => i.level === 3);
+            const idx = lessonItems.findIndex((i) => i.nodeId === built.nodeId);
+            if (idx === -1) return built;
+            return {
+                ...built,
+                prev: idx > 0 ? { nodeId: lessonItems[idx - 1].nodeId, title: lessonItems[idx - 1].title } : built.prev,
+                next:
+                    idx < lessonItems.length - 1
+                        ? { nodeId: lessonItems[idx + 1].nodeId, title: lessonItems[idx + 1].title }
+                        : built.next
+            };
+        },
+        []
+    );
 
     const buildLesson = useCallback(
         async (nodeId: number, base: LessonAppProps['data'], courseId: number, lessonSlug: string) => {
@@ -48,7 +67,8 @@ export default function LessonApp(props: LessonAppProps) {
                     ? { downloadUrl: raw.download_link, name: raw?.title, sizeLabel: raw?.size }
                     : undefined,
                 passed: raw?.passed === true || raw?.passed === 1,
-                locked: !!raw?.locked
+                locked: !!raw?.locked,
+                options: Array.isArray(raw?.options) ? raw.options.map(String) : undefined
             });
             return {
                 nodeId,
@@ -105,12 +125,14 @@ export default function LessonApp(props: LessonAppProps) {
                 if (cancelled) return;
                 const built = await buildLesson(nodeId, props.data, courseId, lessonSlug);
                 if (cancelled) return;
-                setLesson(built);
+                setLesson(attachNav(built, outlineRef.current));
 
                 if (courseId) {
                     const outline = await coursesApi.fullOutline(courseId, lessonSlug);
                     if (cancelled) return;
+                    outlineRef.current = outline;
                     setOutline(outline);
+                    setLesson(attachNav(built, outline));
                 }
             } catch (e) {
                 console.warn('lesson app init failed', e);
@@ -125,14 +147,14 @@ export default function LessonApp(props: LessonAppProps) {
         coursesApi.passData(dataId).then(() => {
             const nodeId = pageNodeId(props.url);
             if (nodeId != null && lesson) {
-                buildLesson(nodeId, props.data, lesson.courseId, slug).then(setLesson);
+                buildLesson(nodeId, props.data, lesson.courseId, slug).then((built) => setLesson(attachNav(built, outlineRef.current)));
             }
         });
     };
 
     const onPassOrResetLesson = (nodeId: number) => {
         coursesApi.passNode(nodeId).then(() => {
-            if (lesson) buildLesson(nodeId, props.data, lesson.courseId, slug).then(setLesson);
+            if (lesson) buildLesson(nodeId, props.data, lesson.courseId, slug).then((built) => setLesson(attachNav(built, outlineRef.current)));
         });
     };
 
