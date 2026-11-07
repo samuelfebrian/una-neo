@@ -97,12 +97,12 @@ export function unaPageCacheKey({ url, tenant, cookieString }) {
 
 export async function cachedUnaPageJson({ path, key, load }) {
     const ttlMs = Math.max(0, ttlSeconds(path)) * 1000;
-    if (!ttlMs) { console.log(`[neo-diag][cache] BYPASS key=${key} path=${path}`); return load(); }
+    if (!ttlMs) return load();
 
     const now = Date.now();
     const hit = store.get(key);
     if (hit) {
-        if (hit.expires > now) { console.log(`[neo-diag][cache] HIT key=${key} path=${path} ageMs=${now - (hit.expires - ttlMs)}`); return hit.value; }
+        if (hit.expires > now) return hit.value;
         store.delete(key);
     }
 
@@ -128,6 +128,5 @@ export async function cachedUnaPageJson({ path, key, load }) {
         });
 
     inflight.set(key, request);
-    console.log(`[neo-diag][cache] MISS key=${key} path=${path}`);
     return request;
 }

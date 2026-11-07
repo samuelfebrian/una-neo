@@ -246,24 +246,24 @@ const getData = cache(async (path: string, searchParamsKey: string): Promise<Una
         }
     };
 
-    const result = await cachedUnaPageJson({
-        path,
-        key: unaPageCacheKey({
-            url: l,
-            tenant: tenantUnaUrl ?? '',
-            cookieString: cookieString || '',
-        }),
-        load: loadUnaPage,
-    });
+    // UNA logs a member in by flipping user_id on the session row without rotating the
+    // session id, so a cookie fingerprint can't tell "guest a second ago" from "those
+    // same cookies just logged in" — a cached guest answer would keep the viewer on the
+    // login page for its TTL. Membership cookies therefore skip the page cache; guests
+    // without a session keep it.
+    const hasSessionCookie = /(^|;\s*)memberSession=/.test(cookieString || '');
 
-    // TEMP-DIAG (login issue): remove after diagnosis.
-    const diagUser = result?.data?.user;
-    const diagCookieNames = String(cookieString || '')
-        .split(';')
-        .map((part) => part.split('=')[0]?.trim())
-        .filter(Boolean)
-        .join(',');
-    console.log(`[neo-diag][page] path=${path} code=${result?.code} logged=${diagUser ? diagUser.id : 'GUEST'} cookies=${diagCookieNames || '(none)'}`);
+    const result = hasSessionCookie
+        ? await loadUnaPage()
+        : await cachedUnaPageJson({
+            path,
+            key: unaPageCacheKey({
+                url: l,
+                tenant: tenantUnaUrl ?? '',
+                cookieString: cookieString || '',
+            }),
+            load: loadUnaPage,
+        });
     return result;
 });
 

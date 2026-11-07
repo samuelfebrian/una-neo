@@ -79,3 +79,6 @@ coverage/
 *crash*.log
 .trae/
 .windsurf/
+
+# temporary design mockup (remove after full implementation)
+/mockup/
