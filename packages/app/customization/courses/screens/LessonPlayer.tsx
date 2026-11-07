@@ -376,30 +376,6 @@ export function LessonPlayer({
               {lesson.textHtml && <RichText html={lesson.textHtml} />}
             </div>
           )}
-
-          {/* Up Next Lesson Teaser */}
-          {lesson.next && (
-            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-semibold text-slate-400 uppercase">
-                  Next Lesson
-                </span>
-                <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                  {lesson.next.title}
-                </h5>
-              </div>
-              {onNextLesson && (
-                <button
-                  type="button"
-                  onClick={() => onNextLesson(lesson.next!.nodeId)}
-                  className="px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <span>Start Lesson</span>
-                  <RenderIcon name="arrow-right" className="w-3.5 h-3.5" iconSlot={iconSlot} />
-                </button>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Right Zone: Attachments Rail */}
@@ -456,7 +432,16 @@ export function LessonPlayer({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Center: upcoming lesson title */}
+        <div className="flex items-center justify-center min-w-0 flex-1 px-3">
+          {lesson.next?.title && (
+            <h5 className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate text-center">
+              {lesson.next.title}
+            </h5>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 justify-end shrink-0">
           {lesson.next && onNextLesson && (
             <Button
               variant="primary"
