@@ -298,7 +298,7 @@ export function LessonPlayer({
             </div>
           )}
 
-          {/* Steps navigation dots / indicators */}
+          {/* Steps navigation dots / indicators (dots need 2+ steps to mean anything) */}
           {steps.length > 0 ? (
             <div className="space-y-5">
               <div className="flex items-center justify-between">
@@ -309,24 +309,26 @@ export function LessonPlayer({
                   })}
                 </span>
 
-                <div className="flex items-center gap-1.5">
-                  {steps.map((st, i) => (
-                    <button
-                      key={st.id}
-                      type="button"
-                      onClick={() => setActiveStepIndex(i)}
-                      className={`w-2.5 h-2.5 rounded-full transition-all cursor-pointer ${
-                        i === activeStepIndex
-                          ? 'w-6 bg-blue-600'
-                          : st.passed
-                          ? 'bg-emerald-500'
-                          : 'bg-slate-200 dark:bg-slate-700'
-                      }`}
-                      title={st.title}
-                      aria-label={`Step ${i + 1}: ${st.title}`}
-                    />
-                  ))}
-                </div>
+                {steps.length > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    {steps.map((st, i) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => setActiveStepIndex(i)}
+                        className={`w-2.5 h-2.5 rounded-full transition-all cursor-pointer ${
+                          i === activeStepIndex
+                            ? 'w-6 bg-blue-600'
+                            : st.passed
+                            ? 'bg-emerald-500'
+                            : 'bg-slate-200 dark:bg-slate-700'
+                        }`}
+                        title={st.title}
+                        aria-label={`Step ${i + 1}: ${st.title}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
 
               {currentStep && (
