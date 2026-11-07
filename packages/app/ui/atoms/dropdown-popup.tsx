@@ -1,0 +1,717 @@
+import { useState, useRef, useEffect, useMemo, useCallback, createContext, type ReactNode } from 'react';
+import { cn } from 'app/lib/util';
+import {
+    Modal as ModalBase,
+    Platform,
+    type StyleProp,
+    type ViewStyle,
+} from 'react-native';
+import { Pressable, ScrollView, View } from 'app/design/view'
+import { RemoveScroll } from 'react-remove-scroll';
+import { appSetting } from 'app/lib/util';
+import { useWindowSize } from 'app/context/measure';
+import emitter, { EVENTS } from 'app/context/emitter';
+import { NeoButtonRef, legacyToNeoButtonProps } from 'app/design/controls'
+import { isLegacyButtonProps, stripRoutingKeys } from 'app/design/controls/neo-button/legacy-button-map';
+import type { ComponentType } from 'react';
+import ElementLoading from 'app/ui/atoms/loading';
+import { cueAttributes, playCue, PressCueContext } from 'app/lib/sound';
+
+// Trigger component, loosely typed: the popup passes RN / ARIA props
+// (collapsable, aria-*, onFocusCapture) that NeoButton forwards to its surface.
+const NeoTriggerButton: ComponentType<any> = NeoButtonRef;
+
+const dropdownTheme = appSetting('theme', 'dropdown');
+
+// Web: the menu opens from its trigger, growing from 97% as it fades in (250ms), and closes faster (150ms) to 99%;
+// under reduced motion it only fades. Native menus open and close at once.
+const MENU_CLOSE_MS = 150;
+const MENU_MOTION_CLASS = 'web:transition-[opacity,scale] web:ease-[cubic-bezier(0.22,1,0.36,1)] web:motion-reduce:scale-100';
+const MENU_MOTION_OPEN_CLASS = 'web:duration-250 web:scale-100';
+const MENU_MOTION_ENTER_CLASS = 'web:duration-250 web:scale-97';
+const MENU_MOTION_CLOSE_CLASS = 'web:duration-150 web:scale-99';
+
+function menuMotionClass(measured: boolean, closing: boolean) {
+    if (!measured) return MENU_MOTION_ENTER_CLASS;
+    return closing ? MENU_MOTION_CLOSE_CLASS : MENU_MOTION_OPEN_CLASS;
+}
+
+/**
+ * After content was seen loading, wait this long without a height change before showing it.
+ * Each registry row has its own Suspense boundary and React reveals sibling boundaries up to
+ * 300ms apart, so without the wait the menu grows row by row.
+ */
+const CONTENT_SETTLE_MS = 350;
+
+type ButtonPos = {
+    triggerY: number;
+    triggerHeight: number;
+    x: number;
+    width: number;
+    height: number;
+    maxHeight: number;
+    shouldOpenAbove: boolean;
+    /** Web: height of the fixed popup layer, for anchoring an above-open popup by its bottom edge. */
+    viewportHeight: number;
+};
+
+/** Position while closed: the initial state and what closing resets to. */
+const CLOSED_POS: ButtonPos = { triggerY: 0, triggerHeight: 0, x: 0, width: 0, height: 0, maxHeight: 0, shouldOpenAbove: false, viewportHeight: 0 };
+
+const WEB_FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getWebFocusableElements(root: any): HTMLElement[] {
+    if (!root || typeof root.querySelectorAll !== 'function') return [];
+    return Array.from(root.querySelectorAll(WEB_FOCUSABLE_SELECTOR) as NodeListOf<HTMLElement>).filter((el) => {
+        if (el.getAttribute('aria-hidden') === 'true') return false;
+        if (typeof window === 'undefined') return true;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+}
+
+function getBodyChild(node: any): Element | null {
+    let el = node;
+    while (el && el.parentElement && el.parentElement !== document.body) {
+        el = el.parentElement;
+    }
+    return el && el.parentElement === document.body ? el : null;
+}
+
+/** Open state for menu triggers (NeoButton `selected` / topmenu chevron). */
+export const DropdownMenuOpenContext = createContext(false);
+
+/**
+ * Trigger button props: NeoButton props. `legacyButton: true` or any legacy
+ * key (`variant`, `size`, `startDecorator`, `title`, `rounded`, `fullWidth`)
+ * maps them through `legacyToNeoButtonProps` first.
+ */
+export type DropdownButtonProps = Record<string, any>;
+
+export type DropdownPopupProps = {
+    /** Render a (Neo)Button trigger from these props instead of `trigger`. */
+    buttonProps?: DropdownButtonProps;
+    children?: ReactNode;
+    /** Controlled open state (needs `onOpenChange` too). */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    /** Custom trigger content, used when `buttonProps` is omitted. */
+    trigger?: ReactNode;
+    minPopupWidth?: number;
+    /** Caps popup width (px). Inline style wins over Tailwind max-w-* on the popup shell. */
+    maxPopupWidth?: number;
+    defaultOpen?: boolean;
+    /** Prefer opening above the trigger. */
+    showOnTop?: boolean;
+    /** Popup shell classes; defaults to theme `dropdown.cnt`. */
+    contentClasses?: string;
+    /** When true, allows page scroll while popup is open. */
+    hoverMode?: boolean;
+    /** When true (e.g. tabs "More"), open the menu when the trigger subtree receives focus (Tab or roving arrows). */
+    openOnFocus?: boolean;
+    /** Merged after `contentClasses` (e.g. `overflow-visible` so focus rings are not clipped). */
+    contentClassName?: string;
+    /** 8px around the content (theme `dropdown.inset`), inside the scroller. false for content that runs to the edges. */
+    inset?: boolean;
+    /** Accessible name for custom trigger wrappers (when `buttonProps` is omitted). */
+    triggerAccessibilityLabel?: string;
+    /** Extra classes on the trigger Pressable (e.g. `flex-1` for tab-bar More). */
+    triggerClassName?: string;
+    /** RN layout style for the trigger Pressable (e.g. tab-bar button `style`). */
+    triggerStyle?: StyleProp<ViewStyle>;
+};
+
+export default function DropdownPopup({
+    buttonProps,
+    children,
+    open,
+    onOpenChange,
+    trigger,
+    minPopupWidth = 256,
+    maxPopupWidth,
+    defaultOpen = false,
+    showOnTop = false,
+    contentClasses = dropdownTheme?.cnt,
+    hoverMode = false,
+    openOnFocus = false,
+    contentClassName = '',
+    inset = true,
+    triggerAccessibilityLabel,
+    triggerClassName = '',
+    triggerStyle,
+}: DropdownPopupProps) {
+    const buttonRef = useRef<any>(null);
+    const contentRef = useRef<any>(null);
+    const restoreFocusRef = useRef<any>(null);
+    const [buttonPos, setButtonPos] = useState<ButtonPos>(CLOSED_POS);
+    const [popupHeight, setPopupHeight] = useState(0);
+    const [popupRenderedWidth, setPopupRenderedWidth] = useState(0);
+    /**
+     * On web the menu rows come from the component registry (`next/dynamic`). On the first
+     * open their chunk is still loading, so the popup showed as a thin empty strip and then
+     * grew row by row. When the content measures empty we reserve one row with a spinner,
+     * and show the rows once their height has been stable for CONTENT_SETTLE_MS.
+     * The latch is a ref: several layout events can arrive before a re-render.
+     */
+    const [contentPending, setContentPending] = useState(false);
+    const contentLoadingRef = useRef(false);
+    const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { width: windowWidth, height: windowHeight } = useWindowSize();
+    const isWeb = useMemo(() => Platform.OS === 'web', []);
+    const isIos = useMemo(() => Platform.OS == 'ios', []);
+
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    const [isModalVisible, setIsModalVisible] = useState(false);
+
+    const isControlledOutside =
+        open !== undefined && typeof onOpenChange === 'function';
+    const isRealOpen = isControlledOutside ? open : isOpen;
+
+    useEffect(() => {
+        const subscription = emitter.addListener(EVENTS.link, (data: { action?: string }) => {
+            if (data.action == 'pressed') {
+                // Close both controlled and uncontrolled popups (e.g. wiki mobile nav).
+                if (isControlledOutside) {
+                    onOpenChange!(false);
+                } else {
+                    setIsOpen(false);
+                }
+            }
+        })
+
+        return () => {
+            subscription.remove()
+        }
+    }, [isControlledOutside, onOpenChange])
+
+    // Web keeps a closing menu on screen while it fades out (MENU_CLOSE_MS); native closes at once.
+    const [isClosing, setIsClosing] = useState(false);
+    useEffect(() => {
+        if (isRealOpen) {
+            if (isClosing) setIsClosing(false);
+            // Only set modal visible if it's not already visible
+            if (!isModalVisible) {
+                setIsModalVisible(true);
+            }
+            return undefined;
+        }
+        if (!isModalVisible) return undefined;
+        if (!isWeb) {
+            setIsModalVisible(false);
+            return undefined;
+        }
+        if (!isClosing) setIsClosing(true);
+        const timer = setTimeout(() => {
+            setIsModalVisible(false);
+            setIsClosing(false);
+        }, MENU_CLOSE_MS);
+        return () => clearTimeout(timer);
+    }, [isRealOpen, isModalVisible, isClosing, isWeb]);
+
+    const measureElement = useCallback((node: any, callback: (x: number, y: number, width: number, height: number) => void) => {
+        if (!node) return false;
+
+        if (node.measureInWindow) {
+            node.measureInWindow(callback);
+            return true;
+        }
+
+        if (isWeb && node.getBoundingClientRect) {
+            const rect = node.getBoundingClientRect();
+            callback(rect.left, rect.top, rect.width, rect.height);
+            return true;
+        }
+
+        return false;
+    }, [isWeb]);
+
+    const measureRetryRef = useRef(0);
+    const updateButtonPosition = useCallback((): void => {
+        if (!measureElement(buttonRef.current, (x, y, width, height) => {
+            // measureInWindow on iOS can return zeros for a few frames while the
+            // trigger is still being laid out (e.g. inside a ScrollView, right
+            // after a screen transition, or before an image-sized avatar settles).
+            // Retry on the next frame instead of locking the popup at (0, 0).
+            if ((width === 0 && height === 0) && measureRetryRef.current < 5) {
+                measureRetryRef.current += 1;
+                requestAnimationFrame(() => updateButtonPosition());
+                return;
+            }
+            measureRetryRef.current = 0;
+
+            const roomBelow = windowHeight - (y + height) - 16;
+            const roomAbove = y - 24;
+            const shouldOpenAbove = showOnTop || (roomBelow < 240 && roomAbove > roomBelow);
+            const maxHeight = Math.max(120, shouldOpenAbove ? roomAbove : roomBelow);
+
+            setButtonPos({
+                triggerY: y,
+                triggerHeight: height,
+                x,
+                width,
+                height,
+                maxHeight,
+                shouldOpenAbove,
+                viewportHeight: isWeb ? document.documentElement.clientHeight : 0,
+            });
+        })) return;
+    }, [measureElement, minPopupWidth, showOnTop, windowHeight, windowWidth, isWeb]);
+
+    const handleToggle = useCallback(
+        (bOpen: boolean) => {
+            if (bOpen && isWeb) {
+                restoreFocusRef.current = buttonRef.current;
+            }
+            if (isControlledOutside) {
+                onOpenChange!(bOpen);
+            } else {
+                setIsOpen(bOpen);
+            }
+        },
+        [isControlledOutside, isWeb, onOpenChange]
+    );
+
+    // Reset only after the popup was open: on mount and on resizes while closed the
+    // state already is the closed one, and a no-op dispatch from an effect isn't free.
+    // A closing menu keeps its place until it has faded out (isModalVisible).
+    const wasOpenRef = useRef(false);
+    useEffect(() => {
+        if (isRealOpen) {
+            wasOpenRef.current = true;
+            updateButtonPosition();
+            if (isWeb) {
+                window.addEventListener('resize', updateButtonPosition);
+                return () =>
+                    window.removeEventListener('resize', updateButtonPosition);
+            }
+        } else if (wasOpenRef.current && !isModalVisible) {
+            wasOpenRef.current = false;
+            measureRetryRef.current = 0;
+            setButtonPos(CLOSED_POS);
+            setPopupHeight(0);
+            setPopupRenderedWidth(0);
+            setContentPending(false);
+            contentLoadingRef.current = false;
+            if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+            settleTimerRef.current = null;
+        }
+    }, [isRealOpen, isModalVisible, updateButtonPosition]);
+
+    useEffect(() => () => {
+        if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    }, []);
+
+    /** Reposition when any scrollable ancestor scrolls (menu stays anchored to trigger). */
+    useEffect(() => {
+        if (!isWeb || !isRealOpen) return;
+        const onScroll = (event: Event) => {
+            // Scrolling the popup's own list doesn't move the trigger; re-measuring then
+            // shifts the popup (trigger was measured mid press-animation on open)
+            if (contentRef.current?.contains?.(event.target)) return;
+            updateButtonPosition();
+        };
+        window.addEventListener('scroll', onScroll, true);
+        return () => window.removeEventListener('scroll', onScroll, true);
+    }, [isWeb, isRealOpen, updateButtonPosition]);
+
+    // Escape closes (web)
+    useEffect(() => {
+        if (!isWeb || !isRealOpen) return;
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                playCue('close', { emphasis: 'subtle' });
+                handleToggle(false);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [isWeb, isRealOpen, handleToggle]);
+
+    // Focus goes back to the trigger once the menu has faded out (isModalVisible): until then the page is inert, and
+    // react-native-web's Modal pulls focus that leaves it back inside.
+    useEffect(() => {
+        if (!isWeb) return;
+        if (isRealOpen || isModalVisible) return;
+        const node = restoreFocusRef.current;
+        restoreFocusRef.current = null;
+        if (!node) return;
+        const focusTrigger = () => {
+            if (typeof node.focus === 'function') {
+                node.focus();
+                if (document.activeElement === node || node.contains?.(document.activeElement)) {
+                    return;
+                }
+            }
+            const inner = node.querySelector?.('[tabindex="0"], [role="button"], button, a');
+            inner?.focus?.();
+        };
+        const id = requestAnimationFrame(focusTrigger);
+        return () => cancelAnimationFrame(id);
+    }, [isWeb, isRealOpen, isModalVisible]);
+
+    const handleBackdropPress = (event: any) => {
+        event.stopPropagation();
+        handleToggle(false);
+    };
+
+    // True only after measureElement returned a real layout. `visibility` is a
+    // web-only CSS property and is ignored by React Native on iOS/Android, so
+    // we additionally drive `opacity` + `pointerEvents` to keep the popup
+    // hidden while it is still anchored at (0, 0) on native.
+    const triggerMeasured = buttonPos.height > 0 || buttonPos.width > 0;
+    // Native "above" needs the popup's own height (measured via onLayout) to
+    // anchor it at `triggerTop - popupHeight - gap`. Web anchors it by `bottom`,
+    // so it grows upwards in place (e.g. from the loading row to the full menu).
+    // "Below" is anchored at `triggerBottom + gap` on both.
+    const anchorAboveByBottom = isWeb && buttonPos.shouldOpenAbove;
+    const popupMeasured = (!buttonPos.shouldOpenAbove || anchorAboveByBottom || popupHeight > 0) && popupRenderedWidth > 0;
+    const hasMeasured = triggerMeasured && popupMeasured;
+
+    // Wait for the content too: on a first (loading) open the rows don't exist yet.
+    useEffect(() => {
+        if (!isWeb || !isRealOpen || !hasMeasured || contentPending) return;
+        const id = requestAnimationFrame(() => {
+            const first = getWebFocusableElements(contentRef.current)[0];
+            first?.focus?.();
+        });
+        return () => cancelAnimationFrame(id);
+    }, [isWeb, isRealOpen, hasMeasured, contentPending]);
+
+    useEffect(() => {
+        if (!isWeb || !isRealOpen || !hasMeasured) return;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Tab') return;
+            const root = contentRef.current;
+            const focusables = getWebFocusableElements(root);
+            if (focusables.length === 0) {
+                event.preventDefault();
+                return;
+            }
+            const first = focusables[0]!;
+            const last = focusables[focusables.length - 1]!;
+            const active = document.activeElement;
+            const inside = root?.contains?.(active);
+            if (event.shiftKey && (active === first || !inside)) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (active === last || !inside)) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown, true);
+        return () => window.removeEventListener('keydown', onKeyDown, true);
+    }, [isWeb, isRealOpen, hasMeasured]);
+
+    useEffect(() => {
+        if (!isWeb || !isModalVisible || !hasMeasured) return;
+        const portalRoot = getBodyChild(contentRef.current);
+        if (!portalRoot) return;
+        const siblings = Array.from(document.body.children).filter((el) => el !== portalRoot);
+        const previous = siblings.map((el) => ({
+            el,
+            inert: el.hasAttribute('inert'),
+            hidden: el.getAttribute('aria-hidden'),
+        }));
+        siblings.forEach((el) => {
+            el.setAttribute('inert', '');
+            el.setAttribute('aria-hidden', 'true');
+        });
+        return () => {
+            previous.forEach(({ el, inert, hidden }) => {
+                if (!inert) el.removeAttribute('inert');
+                if (hidden == null) el.removeAttribute('aria-hidden');
+                else el.setAttribute('aria-hidden', hidden);
+            });
+        };
+    }, [isWeb, isModalVisible, hasMeasured]);
+
+    const cappedPopupWidth = maxPopupWidth
+        ? Math.min(maxPopupWidth, windowWidth - 32)
+        : windowWidth - 32;
+
+    // Clamp left so the popup never overflows the screen edges, using the real
+    // rendered width once onLayout has fired (falls back to minPopupWidth before).
+    const effectivePopupWidth = popupRenderedWidth > 0
+        ? Math.min(popupRenderedWidth, cappedPopupWidth)
+        : (maxPopupWidth ? cappedPopupWidth : minPopupWidth);
+    let finalLeft = buttonPos.x;
+    if (finalLeft + effectivePopupWidth > windowWidth - 16) {
+        finalLeft = windowWidth - effectivePopupWidth - 16;
+    }
+    if (finalLeft < 16) finalLeft = 32;
+
+    // Tweak these two constants if the gap looks off. They are intentionally
+    // asymmetric — on native (especially Android) the "below" anchor often
+    // needs more breathing room than the "above" one because of trigger
+    // pressables / hit-slop / shadow rendering.
+    const triggerGapBelow = isWeb || isIos ? 8: 32;
+    const triggerGapAbove = isWeb ? 8: 0;
+    const popupTop = buttonPos.shouldOpenAbove
+        ? Math.max(8, buttonPos.triggerY - popupHeight - triggerGapAbove)
+        : buttonPos.triggerY + buttonPos.triggerHeight + triggerGapBelow;
+
+    const handleContentLayout = (e: { nativeEvent: { layout: { width: number; height: number } } }) => {
+        const h = Math.round(e.nativeEvent.layout.height);
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (h && h !== popupHeight) {
+            setPopupHeight(h);
+        }
+        if (w && w !== popupRenderedWidth) {
+            setPopupRenderedWidth(w);
+        }
+    };
+
+    const handleScrollLayout = (e: { nativeEvent: { layout: { height: number } } }) => {
+        const h = Math.round(e.nativeEvent.layout.height);
+        if (h <= 0) {
+            // Nothing rendered yet.
+            if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+            settleTimerRef.current = null;
+            if (!contentLoadingRef.current) {
+                contentLoadingRef.current = true;
+                setContentPending(true);
+            }
+            return;
+        }
+        if (!contentLoadingRef.current) return;
+        // Content was loading: show it once it stops growing.
+        if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = setTimeout(() => {
+            settleTimerRef.current = null;
+            contentLoadingRef.current = false;
+            setContentPending(false);
+        }, CONTENT_SETTLE_MS);
+    };
+
+    const Content = (
+        <View
+            ref={contentRef}
+            onLayout={handleContentLayout}
+            pointerEvents={hasMeasured && !isClosing ? 'auto' : 'none'}
+            style={{
+                position: 'absolute',
+                ...(anchorAboveByBottom
+                    ? { bottom: buttonPos.viewportHeight - buttonPos.triggerY + triggerGapAbove }
+                    : { top: popupTop }),
+                left: finalLeft,
+                opacity: hasMeasured && !isClosing ? 1 : 0,
+                visibility: hasMeasured ? 'visible' : 'hidden',
+                elevation: 5,
+                minWidth: maxPopupWidth ? Math.min(minPopupWidth, cappedPopupWidth) : minPopupWidth,
+                maxWidth: cappedPopupWidth,
+                ...(maxPopupWidth ? { width: cappedPopupWidth } : {}),
+                // Unset until the trigger is measured: a 0 max height would measure the
+                // content as empty and take the loading path.
+                maxHeight: buttonPos.maxHeight || undefined,
+                zIndex: 1000,
+            } as unknown as ViewStyle /* web-only `visibility` */}
+            className={cn(
+                contentClasses,
+                contentClassName,
+                MENU_MOTION_CLASS,
+                buttonPos.shouldOpenAbove ? 'web:origin-bottom-left' : 'web:origin-top-left',
+                menuMotionClass(hasMeasured, isClosing)
+            )}
+        >
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                tabIndex={isWeb ? -1 : undefined}
+                onLayout={handleScrollLayout}
+                pointerEvents={contentPending ? 'none' : undefined}
+                className={cn(
+                    'web:outline-none neo-scroll-fade',
+                    maxPopupWidth && 'w-full min-w-0 max-w-full',
+                    // Rows that render while loading stay out of flow and hidden (web:
+                    // `visibility: hidden`, so they are out of the Tab order too), and the
+                    // popup keeps its one-row height until the whole menu is ready.
+                    contentPending && 'absolute left-0 right-0 top-0 opacity-0 web:invisible'
+                )}
+                contentContainerClassName={cn(maxPopupWidth && 'w-full min-w-0', inset && dropdownTheme?.inset)}
+            >
+                {children}
+            </ScrollView>
+            {contentPending ? (
+                // One menu row (44px, the regular control height) with a small spinner.
+                <View className="h-11 w-full items-center justify-center">
+                    <ElementLoading size="small" />
+                </View>
+            ) : null}
+        </View>
+    );
+    const openTrigger = () => handleToggle(true);
+    const triggerFocusProps = {
+        onFocus: openOnFocus && !isWeb ? openTrigger : undefined,
+        onFocusCapture: openOnFocus && isWeb ? openTrigger : undefined,
+    };
+    const triggerMenuProps = {
+        'aria-haspopup': 'true',
+        'aria-expanded': isRealOpen,
+    };
+    // Menus open and close often: subtle (NeoTriggerButton derives the same from aria-expanded).
+    const triggerCue = { cue: isRealOpen ? 'close' : 'open', emphasis: 'subtle' } as const;
+    const dialogLabel =
+        triggerAccessibilityLabel ||
+        buttonProps?.accessibilityLabel ||
+        (typeof buttonProps?.label === 'string' ? buttonProps.label : undefined) ||
+        'Menu';
+
+    const neoButtonProps = buttonProps
+        ? (isLegacyButtonProps(buttonProps) ? legacyToNeoButtonProps(buttonProps) : stripRoutingKeys(buttonProps))
+        : null;
+    // The `buttonProps` trigger. Web: the button holds the ref, which focus restore uses too.
+    let buttonTrigger: ReactNode = null;
+    if (neoButtonProps && isWeb) {
+        buttonTrigger = (
+            <NeoTriggerButton
+                {...neoButtonProps}
+                collapsable={false}
+                ref={buttonRef}
+                onPress={openTrigger}
+                selected={isRealOpen}
+                {...triggerMenuProps}
+                {...triggerFocusProps}
+            />
+        );
+    } else if (neoButtonProps) {
+        // Native: the popup measures the trigger by ref, and Expo UI buttons drop refs, so it
+        // measures this wrapper and the trigger can stay a native (liquid glass) button. The
+        // wrapper takes the button's root layout (NeoButton `rootLayoutClass`). Expo UI buttons
+        // don't report `aria-expanded` either, so the wrapper is the accessibility element,
+        // like the custom trigger's Pressable below.
+        const rootLayoutClass = neoButtonProps.width === 'fill' ? 'flex-auto min-w-0' : 'self-start max-w-full min-w-0';
+        // Blocks presses like the button does (NeoButton: disabled or loading).
+        const triggerDisabled = !!(neoButtonProps.disabled || neoButtonProps.loading);
+        buttonTrigger = (
+            <Pressable
+                collapsable={false}
+                ref={buttonRef}
+                onPress={openTrigger}
+                disabled={triggerDisabled}
+                aria-disabled={triggerDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={dialogLabel}
+                aria-haspopup="true"
+                aria-expanded={isRealOpen}
+                className={cn(rootLayoutClass, neoButtonProps.classNames?.root)}
+            >
+                <NeoTriggerButton
+                    {...neoButtonProps}
+                    classNames={{ ...neoButtonProps.classNames, root: undefined }}
+                    collapsable={false}
+                    onPress={openTrigger}
+                    selected={isRealOpen}
+                    {...triggerMenuProps}
+                    {...triggerFocusProps}
+                />
+            </Pressable>
+        );
+    }
+
+    return (
+        <>
+            {buttonTrigger ?? (
+                <DropdownMenuOpenContext.Provider value={isRealOpen}>
+                    {/* A button inside the trigger plays the trigger's cue, not its own tap. */}
+                    <PressCueContext.Provider value={triggerCue}>
+                    <Pressable
+                        collapsable={false}
+                        ref={buttonRef}
+                        onPress={openTrigger}
+                        {...triggerFocusProps}
+                        {...cueAttributes(triggerCue)}
+                        accessibilityRole="button"
+                        accessibilityLabel={triggerAccessibilityLabel}
+                        aria-haspopup="true"
+                        aria-expanded={isRealOpen}
+                        style={triggerStyle}
+                        className={cn('web:active:scale-95 web:duration-100', triggerClassName)}
+                    >
+                        {trigger}
+                    </Pressable>
+                    </PressCueContext.Provider>
+                </DropdownMenuOpenContext.Provider>
+            )}
+
+            {isModalVisible && (
+                <ModalBase
+                    transparent={true}
+                    visible={isModalVisible}
+                    presentationStyle="overFullScreen"
+                    animationType="none"
+                    onRequestClose={() => handleToggle(false)}
+                    onDismiss={() => {
+                        // Ensure modal is fully cleaned up on native
+                        if (!isWeb && !isRealOpen) {
+                            setIsModalVisible(false);
+                        }
+                    }}
+                >
+                    {isWeb ? (
+                        <View
+                            className="web:fixed web:inset-0 web:z-[9999]"
+                            role="dialog"
+                            aria-modal={true}
+                            aria-label={dialogLabel}
+                            style={{
+                                position: 'fixed',
+                                left: 0,
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: '100%',
+                                height: '100%',
+                                zIndex: 9999,
+                            } as unknown as ViewStyle /* web-only `position: fixed` */}
+                        >
+                            <Pressable
+                                role="presentation"
+                                aria-hidden={true}
+                                tabIndex={-1}
+                                className="web:absolute web:inset-0 web:z-0"
+                                style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    right: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    zIndex: 0,
+                                }}
+                                {...(hoverMode ? {} : cueAttributes({ cue: 'close', emphasis: 'subtle' }))}
+                                onPress={(event: any) => handleBackdropPress(event)}
+                            />
+                            {hoverMode ? (
+                                Content
+                            ) : (
+                                // Keep body overflow intact. `removeScrollBar` sets
+                                // `overflow: hidden` on `body`, which unsticks
+                                // `position: sticky` (compact cover) and jumps it to
+                                // its in-flow position above the viewport. Wheel/touch
+                                // locking still runs.
+                                <RemoveScroll removeScrollBar={false}>
+                                    {Content}
+                                </RemoveScroll>
+                            )}
+                        </View>
+                    ) : (
+                        <Pressable
+                            className="flex-1"
+                            style={[{ backgroundColor: 'rgba(0,0,0,0.3)' }, {}]}
+                            onPress={(event: any) => handleBackdropPress(event)}
+                        >
+                            {Content}
+                        </Pressable>
+                    )}
+                </ModalBase>
+            )}
+        </>
+    );
+}

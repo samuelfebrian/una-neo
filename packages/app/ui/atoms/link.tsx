@@ -1,0 +1,155 @@
+import { Pressable } from 'app/design/view';
+import { useCurrentTabPath, Link } from 'app/lib/hooks/router'
+import { FeedbackHaptics, isExternalUrl, openExternalLink, decodeTextNode } from 'app/lib/util';
+import { nativeTabPageHref } from 'app/lib/navigation/tab-history';
+import { findTabPathForUrl } from 'app/components/nav/tabs/tab-menu';
+import { useCurrentUser } from 'app/context/user';
+import { appSetting, sanitazeUrl, cn } from 'app/lib/util';
+import { useMemo, useCallback } from 'react';
+import { useTabList } from 'app/lib/navigation/tab-bar-menu';
+import { Text } from 'app/design/typography'
+import emitter, { EVENTS } from 'app/context/emitter';
+import type { LinkProps } from './link.types';
+const ThemeLinkSizes = appSetting('theme', 'link_sizes');
+const ThemeLinkStyles = appSetting('theme', 'link_styles');
+
+export default function ElementLink({
+    href = '',
+    target,
+    /** When set (e.g. `/tab0`), native navigation uses this tab segment instead of inferring from the tab bar or current tab. */
+    tabPath,
+    haptics,
+    children,
+    asExternal,
+    onPress,
+    mode,
+    variant = 'default',
+    size,
+    className = '',
+    hitSlop,
+    hitarea = true,
+    alt,
+    emulate: _emulate,
+    ...rest 
+}: LinkProps) {
+
+    const currentTabPath = useCurrentTabPath();
+    const { currentUser } = useCurrentUser();
+
+    const finalHref = sanitazeUrl(href);
+
+    const handlePress = useCallback((e: any) => {
+        if (haptics) FeedbackHaptics(haptics);
+        emitter.emit(EVENTS.link, { action: 'pressed', href: finalHref });
+        onPress?.(e); 
+    }, [haptics, finalHref, onPress]);
+
+    const { tabList: TabList } = useTabList(currentUser);
+
+   
+    // Match against tab urls + transpile_urls so in-app links route to the same
+    // tab as deep links (see processUrl in components/nav/tabs/index.js).
+    const matchedTabPath = useMemo(() => findTabPathForUrl(finalHref, TabList), [finalHref, TabList]);
+
+    const p = useMemo(() => {
+        if (target) {
+            return finalHref;
+        }
+        const pathname = tabPath || matchedTabPath || currentTabPath;
+        // A page pushed onto that tab's native stack, or its root.
+        return nativeTabPageHref(finalHref, pathname, currentUser);
+    }, [target, finalHref, matchedTabPath, currentTabPath, tabPath, currentUser]);
+
+    // Pages always push (same tab or another one). The current tab's root is a
+    // `dismissTo`, which pops the stack back to it like a swipe back: React
+    // Navigation 7's `navigate` pushes a second copy of the root instead.
+    // Another tab's root is navigated to, which switches tabs (the tab router
+    // has no pop-to, so `dismissTo` would do nothing there).
+    const pushes = typeof p !== 'object' || 'params' in p;
+    const dismissTo = typeof p === 'object' && !('params' in p) && p.pathname === currentTabPath;
+
+
+    const sizeClass = (() => {
+        if (!size) return '';
+        const hitareaClass = hitarea === false ? '' : ('web:u-link-hitarea web:u-link-hitarea-' + size);
+        const textSizeClass = ThemeLinkSizes[size]?.text || '';
+        // Variant-specific size classes (e.g. real padding for 'primary' inline-button style)
+        const variantSizeClass = ThemeLinkSizes[size]?.[variant] || '';
+        return cn(hitareaClass, textSizeClass, variantSizeClass);
+    })();
+
+    const sizeHitSlop = size ? ThemeLinkSizes[size]?.hitSlop : undefined;
+    // Fallback hitSlop from theme by size (native only); explicit prop wins; allow disabling with hitarea={false}
+    const resolvedHitSlop =
+        hitSlop !== undefined ? hitSlop :
+            hitarea === false ? undefined :
+                { top: sizeHitSlop, right: sizeHitSlop, bottom: sizeHitSlop, left: sizeHitSlop };
+
+
+    const composedClassName = cn(ThemeLinkStyles[variant], sizeClass, className);
+
+    // Helper to check if children are all text-like (strings/numbers) including arrays
+    const isTextContent = (child: any) => {
+        if (child === null || child === undefined) return true;
+        if (typeof child === 'string' || typeof child === 'number') return true;
+        if (Array.isArray(child)) return child.every(isTextContent);
+        return false;
+    };
+
+    const accessibleLabel = decodeTextNode(alt || (typeof children === 'string' ? children : undefined));
+    const isTextMode = mode === 'text';
+    const isPlainMode = mode === 'plain';
+    const isExternal = isExternalUrl(finalHref) || asExternal === true;
+
+    const content = isTextContent(children) ? (
+        <Text className={composedClassName}>{children}</Text>
+    ) : children;
+
+    // open external links in browser
+    if (isExternal) {
+        const Cnt = isTextMode ? Text : Pressable;
+
+        return (
+            <Cnt
+                onPress={(e: any) => {
+                    handlePress(e);
+                    openExternalLink(finalHref);
+                }}
+                className={composedClassName}
+                aria-label={accessibleLabel}
+                accessibilityLabel={accessibleLabel}
+            >
+                {isTextMode ? children : content}
+            </Cnt>
+        );
+    }
+
+    const renderInnerContent = () => {
+        if (isPlainMode) return content;
+        if (isTextMode) return <Text className={composedClassName}>{children}</Text>;
+
+        return (
+            <Pressable
+                hitSlop={resolvedHitSlop}
+                className={composedClassName}
+            >
+                {content}
+            </Pressable>
+        );
+    };
+
+    return (
+        <Link
+            push={pushes}
+            dismissTo={dismissTo}
+            href={p}
+            asChild
+            onPress={handlePress}
+            aria-label={accessibleLabel}
+            accessibilityLabel={accessibleLabel}
+            {...rest}
+        >
+            {renderInnerContent()}
+        </Link>
+    );
+}

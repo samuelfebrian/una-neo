@@ -1,0 +1,81 @@
+{
+  "name": "neo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/blueimp-md5": "~2.18.2",
+    "@types/fbemitter": "~2.0.35",
+    "@types/react": "~19.3.0",
+    "@types/react-dom": "~19.3.0",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "eslint": "^9.17.0",
+    "lerna-update-wizard": "^1.1.2",
+    "patch-package": "^8.0.1",
+    "turbo": "^2.11.10",
+    "typescript": "~6.0.3",
+    "unicode-emoji-json": "0.9.0"
+  },
+  "scripts": {
+    "lint": "eslint apps packages scripts crypto-shim",
+    "typecheck": "node scripts/typecheck.js",
+    "preinstall": "node scripts/merge-package-customization.js",
+    "postinstall": "patch-package",
+    "native": "cd apps/expo && dotenv -e ../../.env.local -- expo start --clear",
+    "ios": "cd apps/expo && dotenv -e ../../.env.local -- yarn ios",
+    "ios:device": "cd apps/expo && dotenv -e ../../.env.local -- npx expo run:ios --device",
+    "android": "cd apps/expo && dotenv -e ../../.env.local -- npx expo run:android",
+    "web": "cd apps/next && dotenv -e ../../.env.local -- portless run next dev --webpack",
+    "web2": "cd apps/next && dotenv -e ../../.env.local -- yarn dev",
+    "build": "cd apps/next && dotenv -e ../../.env.local -- yarn build",
+    "prod": "cd apps/next && dotenv -e ../../.env.local -- portless run next start",
+    "prod2": "cd apps/next && dotenv -e ../../.env.local -- yarn start",
+    "prod:pm2": "cd apps/next && dotenv -e ../../.env.local -- yarn start:pm2",
+    "analyze": "cd apps/next && cross-env ANALYZE=true yarn build",
+    "clean": "rm -rf ./node_modules ./apps/expo/node_modules ./apps/next/node_modules ./packages/app/node_modules"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "nohoist": [
+    "**/expo-router",
+    "**/expo-router/**"
+  ],
+  "dependencies": {
+    "@10play/react-native-web-webview": "^0.0.3",
+    "cuelume": "0.2.8",
+    "dotenv-cli": "^11.1.0",
+    "web-haptics": "^0.0.6"
+  },
+  "resolutions": {
+    "uniwind": "1.12.2",
+    "tailwindcss": "4.3.2",
+    "@tailwindcss/postcss": "4.3.2",
+    "@radix-ui/primitive": "1.1.7",
+    "@radix-ui/react-use-controllable-state": "1.2.3",
+    "@tiptap/core": "^3.32.0",
+    "@tiptap/extension-blockquote": "^3.32.0",
+    "@tiptap/extension-bold": "^3.32.0",
+    "@tiptap/extension-bubble-menu": "^3.32.0",
+    "@tiptap/extension-code": "^3.32.0",
+    "@tiptap/extension-document": "^3.32.0",
+    "@tiptap/extension-floating-menu": "^3.32.0",
+    "@tiptap/extension-heading": "^3.32.0",
+    "@tiptap/extension-history": "^3.32.0",
+    "@tiptap/extension-image": "^3.32.0",
+    "@tiptap/extension-italic": "^3.32.0",
+    "@tiptap/extension-link": "^3.32.0",
+    "@tiptap/extension-list": "^3.32.0",
+    "@tiptap/extension-paragraph": "^3.32.0",
+    "@tiptap/extension-strike": "^3.32.0",
+    "@tiptap/extension-text": "^3.32.0",
+    "@tiptap/extension-text-align": "^3.32.0",
+    "@tiptap/extension-underline": "^3.32.0",
+    "@tiptap/extensions": "^3.32.0",
+    "@tiptap/pm": "^3.32.0",
+    "@tiptap/react": "^3.32.0"
+  },
+  "packageManager": "yarn@1.22.22"
+}

@@ -1,0 +1,70 @@
+/*
+ * Color tokens — single source for both Next and Expo.
+ *
+ * Two halves in one `:root` block:
+ *   1. Raw palette (`--neutral-*`, `--accent-*`, named colors). Always-on.
+ *   2. Semantic tokens (`--default`, `--background`, `--card`, `--shadow*`, ...) —
+ *      light is the implicit default; dark applies via `@variant dark`.
+ *
+ * On Expo Uniwind ships a built-in `dark` variant tied to `Uniwind.setTheme()`.
+ * On Next see `@custom-variant dark` in packages/app/design/styles/global.css —
+ * it expands to selectors for `[data-theme='dark'] / .dark / [theme='dark']`
+ * AND a `@media (prefers-color-scheme: dark)` block (with `:not([data-theme='light'])`
+ * guards so an explicit light attribute always wins over system dark).
+ */
+@import './palette-schemes.css';
+
+@layer base {
+    :root {
+        /* Raw palette */
+        --neutral: 113 113 122;
+        --neutral-0: 255 255 255;
+        --neutral-50: 250 250 252;
+        --neutral-100: 244 244 245;
+        --neutral-200: 228 228 231;
+        --neutral-300: 212 212 216;
+        --neutral-400: 161 161 170;
+        --neutral-500: 113 113 122;
+        --neutral-600: 82 82 91;
+        --neutral-700: 63 63 70;
+        --neutral-800: 39 39 42;
+        --neutral-900: 24 24 27;
+        --neutral-950: 10 10 12;
+        --neutral-1000: 0 0 0;
+
+        --accent-50: 239 246 255;
+        --accent-100: 219 234 254;
+        --accent-200: 191 219 254;
+        --accent-300: 147 197 253;
+        --accent-400: 96 165 250;
+        --accent-500: 59 130 246;
+        --accent-600: 37 99 235;
+        --accent-700: 29 78 216;
+        --accent-800: 30 64 175;
+        --accent-900: 30 58 138;
+        --accent-950: 23 37 84;
+
+        --white: 255 255 255;
+        --black: 0 0 0;
+        --green: 34 197 94;
+        --yellow: 234 179 8;
+        --blue: 59 130 246;
+        --purple: 168 85 247;
+        --red: 225 29 72;
+
+        /* Semantic alert tones (GitHub-style Markdown callouts). */
+        --alert-note: var(--blue);
+        --alert-tip: var(--green);
+        --alert-important: var(--purple);
+        --alert-warning: var(--yellow);
+        --alert-caution: var(--red);
+
+        /* Semantic tokens, light and dark (palette-schemes.css; web scopes reuse them). */
+        @variant light {
+            @apply scheme-tokens-light;
+        }
+        @variant dark {
+            @apply scheme-tokens-dark;
+        }
+    }
+}

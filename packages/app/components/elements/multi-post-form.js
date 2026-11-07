@@ -1,0 +1,167 @@
+import { Row, View, Pressable } from 'app/design/view'
+import { Text } from 'app/design/typography'
+import { NeoButton } from 'app/design/controls'
+import { useState, useMemo, useRef } from 'react'
+import { useWindowDimensions } from 'react-native'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { menuItemsByNameNew, cloneObject, getBreakpoint, isWeb } from 'app/lib/util'
+import { useCurrentUser } from 'app/context/user'
+import Profile from 'app/ui/molecules/profile/profile'
+import { useTranslation } from 'react-i18next'
+import FormModal, { handleFormModal, getFormModal } from 'app/ui/molecules/dialogs/form-modal';
+import { BlockWrapper } from 'app/components/block-wrapper'
+import { useBreakpointName } from 'app/context/measure'
+import { pickLibraryMedia } from 'app/lib/media/pick-media'
+import { queueFieldAssets } from 'app/lib/form/pending-field-assets'
+
+// The first form's media field, as its own "Add Photos or Videos" button in the
+// composer toolbar would open it (forms/feed.js getAttachmentMenuItems).
+function getMediaField(formPage) {
+    const findInputs = (node) => {
+        if (!node || typeof node !== 'object') return null;
+        if (node.inputs && typeof node.inputs === 'object') return node.inputs;
+        for (const key of Object.keys(node)) {
+            const inputs = findInputs(node[key]);
+            if (inputs) return inputs;
+        }
+        return null;
+    };
+    const inputs = findInputs(formPage?.elements);
+    if (inputs?.video?.type === 'files')
+        return { name: 'video', mediaTypes: ['images', 'videos'], icon: 'ImagePlay', title: 'Add Photos or Videos' };
+    if (inputs?.photo?.type === 'files')
+        return { name: 'photo', mediaTypes: ['images'], icon: 'Image', title: 'Add Photos' };
+    return null;
+}
+
+// The "Create new …" trigger is not a form input (nothing is typed here), so it
+// is a plain Pressable rather than a NeoButton or a TextInput look-alike: text
+// only on phones, fading while pressed; a capsule on tablet and desktop.
+const TRIGGER_CLASS = 'flex-1 min-w-0 h-11 justify-center rounded-full active:opacity-50 '
+    + 'sm:px-4 sm:bg-button sm:hover:bg-button-hover web:transition-[background-color,opacity] web:duration-150';
+const TRIGGER_TEXT_CLASS = 'text-base font-medium tracking-tight text-muted-foreground';
+
+/**
+ * `trigger_label` comes from the block's App config (Studio > Pages > block > "Config (for App
+ * in JSON format)"), e.g. `{"trigger_label": "Ask an expert"}`, and replaces "Create new <type>"
+ * on the trigger, which opens the first type of the `sys_create_post` menu.
+ */
+export default function MultiPostForm({ data, blockWrapperProps, trigger_label: triggerLabelSetting }) {
+    const { currentUser } = useCurrentUser();
+    const { t, i18n } = useTranslation()
+    const { width: windowWidth } = useWindowDimensions();
+    // Other content types: tablet and desktop only. Web hides them with
+    // classes (SSR-safe); native does not render them on phones, since a
+    // `display: none` subtree of native (Expo UI) buttons trips Fabric's
+    // layout ownership assert in debug builds (facebook/react-native#52349).
+    const showOtherTypes = isWeb || !!getBreakpoint(windowWidth);
+    // Phones get a borderless media button (hydration-safe: bordered until hydrated on web).
+    const mediaButtonStyle = useBreakpointName() === '' ? 'borderless' : 'bordered';
+    const [pageData, setPageData] = useState(false);
+    const menu_add_items = menuItemsByNameNew('', data.menu, currentUser).filter(item => item.name != 'more-auto');
+
+    const firstForm = menu_add_items.shift();
+
+    const profileData = useMemo(() => ({
+        ...currentUser,
+        url_avatar: currentUser.avatar,
+        url: null,
+    }));
+
+    // The first form, kept between mounts: every feed page has the composer, and the form
+    // only changes with the profile, the language or the block. Session cleanup clears it.
+    const queryClient = useQueryClient();
+    const formQuery = {
+        queryKey: ['composer_form', currentUser?.id, i18n.language, firstForm?.link, data.params],
+        queryFn: async () => (await getFormModal(firstForm, data.params)).data ?? null,
+        staleTime: 5 * 60 * 1000,
+        cacheTime: 30 * 60 * 1000,
+    };
+    const { data: pageDataDef } = useQuery({ ...formQuery, enabled: !!firstForm });
+
+    const mediaField = useMemo(() => getMediaField(pageDataDef), [pageDataDef]);
+
+    // `ts` only remounts the modal for every open; a count does that.
+    const opens = useRef(0);
+    const getFirstForm = async () => {
+        const form = pageDataDef || await queryClient.fetchQuery(formQuery);
+        opens.current += 1;
+        setPageData({ ...cloneObject(form || {}), ts: opens.current });
+    }
+
+    if (menu_add_items.length == 0 && !firstForm)
+        return;
+
+
+
+    const triggerLabel = triggerLabelSetting
+        ? t(triggerLabelSetting)
+        : t('Create new ') + firstForm.title.toLowerCase();
+
+    const handleTriggerPress = () => {
+        // User clicked to create post - permanently dismiss tooltip
+
+        void getFirstForm();
+    };
+
+    // Fast track to "Add Photos or Videos": pick first (on web the file dialog
+    // needs the click's user gesture), then open the form with the files queued
+    // for its media field, which uploads them on mount. Unsupported picks still
+    // open the form, where the field says so, like a pick inside the form.
+    const handleMediaPress = async () => {
+        if (!mediaField) return;
+        const picked = await pickLibraryMedia(mediaField.mediaTypes);
+        if (!picked) return;
+        queueFieldAssets(mediaField.name, picked.assets, picked.unsupported);
+        await getFirstForm();
+    };
+
+    return (
+        <BlockWrapper {...blockWrapperProps}>
+            {/* One row straight in the block: its chrome (background, padding, title) is the
+                block's design box, so no card of its own. */}
+            <Row className="items-center gap-3 min-w-0">
+                <View className="flex-none">
+                    <Profile {...profileData} displaySize="base" displayType="unit_wo_info" />
+                </View>
+                <Pressable
+                    className={TRIGGER_CLASS}
+                    accessibilityRole="button"
+                    accessibilityLabel={triggerLabel}
+                    onPress={handleTriggerPress}
+                >
+                    <Text className={TRIGGER_TEXT_CLASS} numberOfLines={1}>{triggerLabel}</Text>
+                </Pressable>
+                {mediaField && (
+                    <NeoButton
+                        style={mediaButtonStyle}
+                        borderShape="circle"
+                        controlSize="regular"
+                        image={mediaField.icon}
+                        tooltip={t(mediaField.title)}
+                        accessibilityLabel={t(mediaField.title)}
+                        onPress={handleMediaPress}
+                    />
+                )}
+
+                <FormModal key={pageData?.ts} pageData={pageData} setPageData={setPageData} />
+                {menu_add_items.length > 0 && showOtherTypes && <Row className="hidden sm:flex gap-3 flex-none">
+                    {menu_add_items.map((item, index) => (
+                        <NeoButton
+                            key={item.name}
+                            style="bordered"
+                            borderShape="circle"
+                            controlSize="regular"
+                            image={item.icon}
+                            tooltip={item.title}
+                            accessibilityLabel={item.title}
+                            onPress={() => handleFormModal(item, null, setPageData, data.params)}
+                        />
+                    ))}
+                </Row>}
+
+            </Row>
+        </BlockWrapper>
+
+    )
+}

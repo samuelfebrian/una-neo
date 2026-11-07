@@ -1,0 +1,114 @@
+import { memo, useState } from 'react';
+import { Platform } from 'react-native';
+import { View, Row } from 'app/design/view';
+import { Text } from 'app/design/typography';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from 'app/ui/atoms/hover-card';
+import Profile from 'app/ui/molecules/profile/profile';
+import Link from 'app/ui/atoms/link';
+import { fetcher } from 'app/lib/fetcher';
+import {
+    CoverMenuMeta,
+    CoverMenu,
+} from 'app/components/elements/covers/menu-cover'
+
+const isWeb = Platform.OS === 'web';
+
+/**
+ * Simple static content - no data fetching to avoid re-renders
+ */
+const ProfileCardContent = memo(function ProfileCardContent({ profileData, cover }) {
+    const displayName = profileData?.display_name || '';
+    const avatarUrl = profileData?.url_avatar;
+    const profileUrl = profileData?.url;
+    return (
+            <View className="w-full min-w-0 max-w-full p-2">
+                <Row className="w-full min-w-0 gap-3 items-start">
+                    <View className="flex-none">
+                        <Profile
+                            {...profileData}
+                            url_avatar={avatarUrl}
+                            display_name={displayName}
+                            displayType="unit_wo_info"
+                            displaySize="xl"
+                            showLinks={false}
+                        />
+                    </View>
+                    <View className="flex-1 min-w-0 gap-1">
+                        <Link href={profileUrl} emulate={true}>
+                            <Text className="text-base font-bold text-foreground web:hover:text-primary">
+                                {displayName}
+                            </Text>
+                        </Link>
+                        <Text className="block w-full min-w-0 text-xs text-secondary-foreground wrap-break-word" numberOfLines={2}>{cover?.description}</Text>
+                    </View>
+                </Row>
+                <View className="mt-2 gap-y-2">
+                    {!!cover?.meta_menu && <Row>
+                        <CoverMenuMeta {...cover.meta_menu} button_size='xs' list_display_size='xs' />
+                        </Row>
+                    }
+                    {!!cover?.actions_menu && <Row>
+                        <CoverMenu
+                            {...cover.actions_menu}
+                            uri={profileUrl}
+                            isSplitMenu={true}
+     
+                            size="sm"
+                        />
+
+                    </Row>}
+                </View>
+            </View>
+        
+    );
+});
+
+/**
+ * ProfileHoverCard - Wraps content with a hover card showing profile details
+ * Only renders on web, returns children directly on native
+ */
+function ProfileHoverCard_({ profileData, children, disabled = false }) {
+    // On native, just return children - no hover card support
+    if (!isWeb) {
+        return children;
+    }
+
+    // On web, if disabled or no profile, just return children
+    if (disabled || !profileData?.id) {
+        return children;
+    }
+
+    return <ProfileHoverCardContent profileData={profileData}>{children}</ProfileHoverCardContent>;
+}
+
+function ProfileHoverCardContent({ profileData, children }) {
+    const [cover, setCover] = useState(null);
+    const profileId = profileData?.id;
+
+    // Fetch lazily on first open; HoverCard only reads onOpenChange in a
+    // callback, so identity is not important (React Compiler memoizes it anyway).
+    const handleOpenChange = (open) => {
+        if (!open || cover || !profileId) return;
+        // The profile's cover alone (description, meta and actions menus), not its page.
+        fetcher(`/api.php?r=system/profile_cover/TemplServiceProfiles&params[]=${profileId}`)
+            .then((oResponse) => {
+                if (oResponse?.data) setCover(oResponse.data);
+            })
+            // A failed request leaves the card unloaded; the next open asks again.
+            .catch(() => {});
+    };
+
+    return (
+        <HoverCard onOpenChange={handleOpenChange} maxPopupWidth={384}>
+            <HoverCardTrigger>{children}</HoverCardTrigger>
+            <HoverCardContent className="w-full max-w-sm p-0 overflow-hidden">
+                <ProfileCardContent profileData={profileData} cover={cover} />
+            </HoverCardContent>
+        </HoverCard>
+    );
+}
+
+const ProfileHoverCard = memo(ProfileHoverCard_);
+
+export default ProfileHoverCard;
+export { ProfileHoverCard };

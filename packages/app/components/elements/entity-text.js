@@ -1,0 +1,429 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform } from 'react-native';
+import { useForm, FormProvider } from 'react-hook-form';
+import { View, Row, Pressable } from 'app/design/view';
+import Image, { POST_ENTRY_COVER_SIZES, POST_ENTRY_COVER_WIDTH_CAP } from 'app/ui/atoms/image';
+import { getCoverAspectClass } from 'app/lib/image/upload-settings';
+import Html from 'app/ui/atoms/html';
+import { splitInlineMedia } from 'app/lib/editor/inline-video';
+import { Text, H1C } from 'app/design/typography';
+import { Input } from 'app/design/controls';
+import { appSetting, clearLinks, cn, decodeText } from 'app/lib/util'
+import { checkEntityText, entityTextCheckEmpty } from './entity-text-check'
+import { useEditableRequest } from 'app/lib/form/form-helpers'
+import { ContentMore } from 'app/ui/molecules/content/content-more';
+import EntityAttachments from './entity-attachments';
+import TextMore from 'app/ui/molecules/content/text-more';
+import Video from 'app/ui/atoms/video';
+import Youtube from 'app/ui/molecules/content/youtube'
+import InlineVideo from 'app/ui/molecules/content/inline-video'
+import InlineEmbed from 'app/ui/molecules/content/inline-embed'
+import InlineTable from 'app/ui/molecules/content/inline-table'
+import { BlockWrapper } from 'app/components/block-wrapper'
+import RftText from 'app/components/form-fields/editor-rft-text'
+import { NeoButton } from 'app/design/controls'
+import Loading from 'app/ui/atoms/loading'
+import { useProfileImageUpload } from 'app/lib/image/use-profile-image-upload'
+
+const isWeb = Platform.OS === 'web'
+
+function useClickOutside(enabled, ref, onOutside) {
+    const onOutsideRef = useRef(onOutside)
+    onOutsideRef.current = onOutside
+
+    useEffect(() => {
+        if (!enabled || !isWeb || typeof document === 'undefined') return
+
+        const handle = (event) => {
+            const node = ref.current
+            if (!node) return
+            const target = event.target
+            if (node.contains?.(target)) return
+            onOutsideRef.current?.()
+        }
+
+        // Skip the same click that opened edit mode
+        const timer = setTimeout(() => {
+            document.addEventListener('mousedown', handle)
+            document.addEventListener('touchstart', handle)
+        }, 0)
+
+        return () => {
+            clearTimeout(timer)
+            document.removeEventListener('mousedown', handle)
+            document.removeEventListener('touchstart', handle)
+        }
+    }, [enabled, ref])
+}
+
+function EditableTitleField({
+    editable,
+    requestUrl,
+    fieldName = 'title',
+    initialValue,
+    inputClassName,
+    children,
+}) {
+    // `initialValue` is plain text: callers decode UNA's HTML-escaped title,
+    // or an edit would save a literal `&amp;`.
+    const { value, commit } = useEditableRequest({
+        initialValue: initialValue ?? '',
+        requestUrl,
+        fieldName,
+        toParam: (v) => encodeURIComponent(String(v ?? '')),
+    })
+    const [editing, setEditing] = useState(false)
+    const draftRef = useRef(value ?? '')
+    const wrapRef = useRef(null)
+
+    const saveAndClose = useCallback(async () => {
+        await commit(draftRef.current)
+        setEditing(false)
+    }, [commit])
+
+    useClickOutside(editing, wrapRef, saveAndClose)
+
+    if (!editable) {
+        return typeof children === 'function' ? children(initialValue) : children
+    }
+
+    if (editing) {
+        return (
+            <View ref={wrapRef} className="w-full">
+                <Input
+                    autoFocus
+                    defaultValue={String(value ?? '')}
+                    onChangeText={(text) => { draftRef.current = text }}
+                    onBlur={saveAndClose}
+                    onSubmitEditing={saveAndClose}
+                    className={cn(
+                        'w-full border border-border/60 bg-card rounded-lg px-3 py-2',
+                        inputClassName,
+                    )}
+                />
+            </View>
+        )
+    }
+
+    return (
+        <Pressable
+            onPress={() => {
+                draftRef.current = value ?? ''
+                setEditing(true)
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit title"
+            className="w-full web:cursor-pointer rounded-lg"
+        >
+            {typeof children === 'function' ? children(value) : children}
+        </Pressable>
+    )
+}
+
+function EditableTextField({
+    editable,
+    requestUrl,
+    fieldName = 'text',
+    initialValue,
+    children,
+}) {
+    const { value, commit } = useEditableRequest({
+        initialValue: initialValue ?? '',
+        requestUrl,
+        fieldName,
+        toParam: (v) => encodeURIComponent(String(v ?? '')),
+    })
+    const [editing, setEditing] = useState(false)
+    const wrapRef = useRef(null)
+    const methods = useForm({
+        defaultValues: { [fieldName]: value ?? '' },
+    })
+    const { isDirty } = methods.formState
+
+    const saveAndClose = useCallback(async () => {
+        if (isDirty) {
+            await commit(methods.getValues(fieldName) ?? '')
+        }
+        setEditing(false)
+    }, [commit, fieldName, isDirty, methods])
+
+    useClickOutside(editing, wrapRef, saveAndClose)
+
+    useEffect(() => {
+        if (editing) {
+            methods.reset({ [fieldName]: value ?? '' })
+        }
+    }, [editing, fieldName, methods, value])
+
+    if (!editable) {
+        return typeof children === 'function' ? children(initialValue) : children
+    }
+
+    if (editing) {
+        return (
+            <View ref={wrapRef} className="w-full">
+                <FormProvider {...methods}>
+                    <RftText
+                        name={fieldName}
+                        value={value ?? ''}
+                        html={2}
+                        autofocus
+                        initialHeight={160}
+                        maxHeight={420}
+                        caption=""
+                        placeholder=""
+                    />
+                </FormProvider>
+            </View>
+        )
+    }
+
+    return (
+        <Pressable
+            onPress={() => setEditing(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit text"
+            className="w-full web:cursor-pointer rounded-lg"
+        >
+            {typeof children === 'function' ? children(value) : children}
+        </Pressable>
+    )
+}
+
+export default function EntityTextBlock ({blockWrapperProps, data, block, showPad, sidebar, editable, afterTitle}) {
+    const isEditable = !!(editable || data?.editable)
+    const view = appSetting('entry', 'default_view');
+    switch (view) {
+        case 'small':
+            return <Small blockWrapperProps={blockWrapperProps} data={data} showPad={showPad} editable={isEditable} afterTitle={afterTitle} />;
+        default:
+            return <Default blockWrapperProps={blockWrapperProps} block={block} data={data} showPad={showPad} sidebar={sidebar} editable={isEditable} afterTitle={afterTitle} />;
+    }
+}
+
+function Small({ data, editable, afterTitle }) {
+    const requestUrl = data?.params?.request_url
+    const text = clearLinks(data.entry_text);
+
+    return (
+        <View className="bg-card sm:border-x w-full mx-auto">
+            <View className=' bg-primary/10 sm:bg-transparent  rounded-lg flex-col px-2.5 py-2 sm:p-0 mx-4 mb-2 mt-4'>
+                <EditableTitleField
+                    editable={editable}
+                    requestUrl={requestUrl}
+                    initialValue={decodeText(data.entry_title)}
+                    inputClassName="font-bold text-popover-foreground text-base sm:text-xl"
+                >
+                    {(title) => (
+                        <Text className="font-bold text-popover-foreground  text-base sm:text-xl ">{title}</Text>
+                    )}
+                </EditableTitleField>
+                {afterTitle}
+                <EditableTextField
+                    editable={editable}
+                    requestUrl={requestUrl}
+                    initialValue={text}
+                >
+                    {(body) => (
+                        <ContentMore content={body} numberOfLines={3} numberOfSymbols={360} openSmall={false} customClassName="u-vanilla-html" />
+                    )}
+                </EditableTextField>
+            </View>
+        </View>
+    );
+}
+
+const getImagesData = (data) => {
+    if (!data["bx_if:show_screenshots"] || !data["bx_if:show_screenshots"].condition) {
+        return [];
+    }
+
+    const screenshots = data["bx_if:show_screenshots"].content.screenshots;
+
+    const att = screenshots.map(screenshot => ({
+        type: 'image',
+        data: { 'src': screenshot.url_bg }
+    }));
+
+    return att;
+};
+
+/**
+ * Upload state for an entry image UNA lets the viewer change on the page (`images_edit[kind]`:
+ * field, storage, uploader). A changed image has no UNA sizes yet, so it comes back as `{ src }`.
+ */
+function useEntryImageEdit({ kind, edit, module, contentId, image }) {
+    const { imageUrl, isUploading, pick, modal } = useProfileImageUpload({
+        kind,
+        profileId: contentId,
+        moduleName: module || '',
+        storage: edit?.storage || '',
+        uploader: edit?.uploader,
+        field: edit?.field,
+        initialUrl: image?.src || '',
+    })
+    const shown = imageUrl && imageUrl !== image?.src ? { src: imageUrl } : (image || null)
+    return { image: shown, isUploading, pick, modal }
+}
+
+function EntryCover({ data, module, edit }) {
+    const { image, isUploading, pick, modal } = useEntryImageEdit({
+        kind: 'cover', edit, module, contentId: data?.id, image: data?.image,
+    })
+    if (!image?.src && !edit) return null
+
+    return (
+        <>
+            <View className={`w-full ${image?.src ? getCoverAspectClass(module) : 'h-24 bg-accent/50'} mb-4 sm:rounded-xl overflow-hidden`}>
+                {image?.src ? (
+                    <Image
+                        {...image}
+                        alt={data.title}
+                        className="u-cover"
+                        view="cover"
+                        sizes={POST_ENTRY_COVER_SIZES}
+                        optimizedWidthCap={POST_ENTRY_COVER_WIDTH_CAP}
+                    />
+                ) : null}
+                {isUploading ? (
+                    <View className="absolute inset-0 opacity-60 bg-card justify-center items-center">
+                        <Loading />
+                    </View>
+                ) : null}
+                {edit ? (
+                    <View className="absolute top-3 right-3">
+                        <NeoButton
+                            image="Camera"
+                            style="glass"
+                            controlSize="regular"
+                            borderShape="circle"
+                            disabled={isUploading}
+                            onPress={pick}
+                        />
+                    </View>
+                ) : null}
+            </View>
+            {modal}
+        </>
+    )
+}
+
+function EntryIcon({ data, module, edit }) {
+    const { image, isUploading, pick, modal } = useEntryImageEdit({
+        kind: 'picture', edit, module, contentId: data?.id, image: data?.icon,
+    })
+    if (!image?.src && !edit) return null
+
+    return (
+        <>
+            <View className="relative mr-3 shrink-0">
+                <View className="w-12 h-12 rounded-xl overflow-hidden bg-accent/50">
+                    {image?.src ? (
+                        <Image
+                            {...image}
+                            alt={data.title}
+                            className="u-cover"
+                            view="cover"
+                        />
+                    ) : null}
+                    {isUploading ? (
+                        <View className="absolute inset-0 bg-card/80 items-center justify-center">
+                            <Loading />
+                        </View>
+                    ) : null}
+                </View>
+                {edit ? (
+                    <View className="absolute -bottom-1 -right-1">
+                        <NeoButton
+                            image="Camera"
+                            style="glass"
+                            controlSize="mini"
+                            borderShape="circle"
+                            disabled={isUploading}
+                            onPress={pick}
+                        />
+                    </View>
+                ) : null}
+            </View>
+            {modal}
+        </>
+    )
+}
+
+/** Post body with editor videos, embeds (standalone link paragraphs) and tables rendered inline. */
+function HtmlWithMedia({ html }) {
+    // Split the raw HTML: clearLinks would turn UNA hrefs into relative ones.
+    const segments = useMemo(() => splitInlineMedia(html), [html])
+    if (!segments.some((s) => s.type !== 'html'))
+        return <Html data={clearLinks(html)} />
+
+    return segments.map((s, i) => {
+        if (s.type === 'video') return <InlineVideo key={i} src={s.src} poster={s.poster} width={s.width} height={s.height} align={s.align} />
+        if (s.type === 'embed') return <InlineEmbed key={i} url={s.url} width={s.width} align={s.align} />
+        if (s.type === 'table') return <InlineTable key={i} markdown={s.markdown} />
+        return <Html key={i} data={clearLinks(s.html)} />
+    })
+}
+
+function Default({ data, showPad, sidebar, block, blockWrapperProps, editable, afterTitle }) {
+    const att = getImagesData(data);
+    const isSmall = block?.module == "bx_market";
+    const checked = checkEntityText(data);
+    const text = checked?.text ?? clearLinks(data.entry_text);
+    const videoId = checked?.videoId ?? null;
+    const requestUrl = data?.params?.request_url;
+
+    if (!editable && !text && !data.video && !data.image && !videoId)
+        return null
+
+    return (
+        <BlockWrapper {...blockWrapperProps}>
+            <View className="w-full">
+                {(!!data.video?.src_mp4) && <View className='w-full aspect-video rounded-xl overflow-hidden mb-3'>
+                    <Video poster={data.video.src_poster} src={data.video.src_mp4} cover={true} controls={true} muted={"muted"} />
+                </View>}
+                {(videoId) && <View className='w-full aspect-video rounded-xl overflow-hidden mb-3'>
+                    <Youtube videoId={videoId} />
+                </View>}
+                {!data.video && (
+                    <EntryCover data={data} module={block?.module} edit={data.images_edit?.cover} />
+                )}
+                <View className={`mx-auto w-full ${(showPad == false || sidebar ? '' : ' ')}`}>
+                <Row className="w-full items-center">
+                <EntryIcon data={data} module={block?.module} edit={data.images_edit?.picture} />{/* Market product icon */}
+                    {/* min-w-0: a long title wraps next to the icon instead of pushing out of the block. */}
+                    <View className="flex-1 min-w-0">
+                    <EditableTitleField
+                        editable={editable}
+                        requestUrl={requestUrl}
+                        initialValue={decodeText(data.entry_title)}
+                        inputClassName="text-2xl sm:text-3xl font-bold tracking-tight text-foreground font-title"
+                    >
+                        {(title) => (
+                            isSmall
+                                ? <TextMore tagName='h1' text={title} numberOfLines={2} className="font-bold tracking-tight text-foreground"></TextMore>
+                                : <H1C>{title}</H1C>
+                        )}
+                    </EditableTitleField>
+                    </View>
+                    </Row>
+                    {afterTitle}
+                    <EditableTextField
+                        editable={editable}
+                        requestUrl={requestUrl}
+                        initialValue={data.entry_text}
+                    >
+                        {(body) => {
+                            return isSmall
+                                ? <ContentMore showLess={true} content={clearLinks(body)} numberOfLines={3} numberOfSymbols={360} openSmall={false} customClassName="u-vanilla-html" />
+                                : <HtmlWithMedia html={body} />
+                        }}
+                    </EditableTextField>
+                </View>
+                <EntityAttachments data={att} />
+            </View>
+        </BlockWrapper>
+    );
+}
+
+EntityTextBlock.checkEmpty = entityTextCheckEmpty;
