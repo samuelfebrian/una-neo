@@ -41,7 +41,8 @@ export default function LessonApp(props: LessonAppProps) {
         async (nodeId: number, base: LessonAppProps['data'], courseId: number, lessonSlug: string) => {
             // prefer a proper service fetch (carries pass state for the member) - fall back to the block payload
             const fetched = courseId ? await coursesApi.nodeBlock(courseId, nodeId, lessonSlug) : null;
-            const payload: any = fetched ?? {
+            if (fetched) return fetched; // already normalized in coursesApi; never re-normalize or text/labels are lost
+            const payload: any = {
                 index: base?.index ?? 0,
                 sample: base?.sample ?? 'lesson',
                 title: base?.title ?? '',

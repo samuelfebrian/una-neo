@@ -99,6 +99,14 @@ export function LessonPlayer({
   };
 
   /* ---------------- STEP CONTENT RENDERER ---------------- */
+  const STEP_TYPE_LABELS: Record<string, string> = {
+    bx_classes: 'Lesson',
+    bx_posts: 'Post',
+    bx_videos: 'Video',
+    bx_photos: 'Image',
+    bx_polls: 'Quiz',
+    bx_files: 'File'
+  };
   const renderStepContent = (step: Step) => {
     switch (step.contentType) {
       case 'bx_videos':
@@ -175,10 +183,20 @@ export function LessonPlayer({
       case 'bx_classes':
       case 'bx_posts':
       default:
-        if (!step.textHtml) return null;
+        if (!step.textHtml && !step.image?.src) return null;
         return (
           <div className="space-y-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <RichText html={step.textHtml} />
+            {step.image?.src && (
+              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                <ImageWithFallback
+                  src={step.image.src}
+                  alt={step.title}
+                  aspectRatio="16:9"
+                  className="w-full object-cover"
+                />
+              </div>
+            )}
+            {step.textHtml && <RichText html={step.textHtml} />}
           </div>
         );
     }
@@ -316,7 +334,7 @@ export function LessonPlayer({
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider font-mono">
-                        {currentStep.typeLabel || currentStep.contentType}
+                        {STEP_TYPE_LABELS[currentStep.contentType] || currentStep.typeLabel || 'Lesson'}
                       </span>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
                         {currentStep.title}

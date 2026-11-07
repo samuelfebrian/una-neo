@@ -166,7 +166,8 @@ function normalizeStep(raw: any, index: number, usage: 0 | 1): Step {
             : undefined,
         passed: isTrue(raw?.passed),
         locked: isLockedStep(raw),
-        passTitle: raw?.pass_title
+        passTitle: raw?.pass_title,
+        options: Array.isArray(raw?.options) ? raw.options.map(String) : undefined
     };
 }
 
