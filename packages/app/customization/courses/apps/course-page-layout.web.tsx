@@ -368,6 +368,29 @@ function CreateApp({ data }: { data: any }) {
     );
 }
 
+/* ---------- Join flow (join-course-profile): UNA's own join page (free/paid/questionnaire/invite) ---------- */
+
+function JoinApp({ data }: { data: any }) {
+    const blocks = unaBlocksBySource(data, () => true);
+    return (
+        <Frame>
+            <div className="mx-auto max-w-3xl space-y-4">
+                <div className="rounded-2xl border border-blue-100 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 p-4 sm:p-5">
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Join this Course</h1>
+                    <p className="mt-1 text-sm text-slate-500">UNA handles the join runbook here: free enrollment, paid plans, invitations and the joining questionnaire.</p>
+                </div>
+                <KitPanel title="Enrollment" subtitle="UNA join & pricing forms run their own actions under your session">
+                    <UnaBlocks blocks={blocks} />
+                </KitPanel>
+                {!blocks.length && <KitPanel title="Sign in required">Joining a course needs a member account.</KitPanel>}
+                <div className="text-center">
+                    <a href="/courses-search" className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Back to catalog</a>
+                </div>
+            </div>
+        </Frame>
+    );
+}
+
 /* ---------- About (course-profile-info) ---------- */
 
 function AboutApp({ data }: { data: any }) {
@@ -567,6 +590,12 @@ function CourseViewPage({ data }: { data: any }) {
                     else window.location.reload();
                 }}
                 onFavorite={async () => coursesApi.favorite(course.profileId)}
+                onPublishCourse={async (c) => {
+                    if (await coursesApi.publish(c.id)) window.location.reload();
+                }}
+                onUnpublishCourse={async (c) => {
+                    if (await coursesApi.hide(c.id)) window.location.reload();
+                }}
                 onAddModuleOrLesson={undefined}
                 isFavorited={false}
                 aboutSlot={aboutBlocks.length > 0 ? <UnaBlocks blocks={aboutBlocks} /> : undefined}
@@ -628,7 +657,7 @@ function CourseTakeoverView({ uri, data }: { uri: string; data: any }) {
                 {uri === 'courses-joined' && <MyCoursesApp data={data} />}
                 {uri === 'courses-administration' && <AdminApp data={data} />}
                 {uri === 'create-course-profile' && <CreateApp data={data} />}
-                {uri === 'join-course-profile' && <CreateApp data={data} />}
+                {uri === 'join-course-profile' && <JoinApp data={data} />}
                 {uri === 'course-profile-info' && <AboutApp data={data} />}
                 {uri === 'course-fans' && <StudentsApp data={data} />}
                 {uri === 'view-course-profile' && <CourseViewPage data={data} />}

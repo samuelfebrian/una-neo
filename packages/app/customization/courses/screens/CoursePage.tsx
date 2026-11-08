@@ -151,7 +151,13 @@ export function CoursePage({
     }
   });
   lessonsByParent.forEach((list) =>
-    list.sort((a, b) => (a.order || a.index || 0) - (b.order || b.index || 0))
+    list.sort((a, b) => {
+      // UNA module ordering: theme order first (U-Form preserves it), then row index
+      const themeA = itemByNode.get(a.parentId)?.order ?? 0;
+      const themeB = itemByNode.get(b.parentId)?.order ?? 0;
+      if (themeA !== themeB && themeA > 0 && themeB > 0) return themeA - themeB;
+      return (a.order || a.index || 0) - (b.order || b.index || 0);
+    })
   );
 
   // Find first incomplete lesson for "Continue" button

@@ -59,12 +59,22 @@ function lessonUrl(slug: string, nodeId: number): string {
     return slug ? `/view-course-profile-node/${slug}?node_id=${nodeId}` : `?node_id=${nodeId}`;
 }
 
-/** Normalize an L2 block payload (rich `items` OR the level-max=3 form inputs quirk). */
+/**
+ * Normalize an L2 block payload.
+ * UNA's real shape (module_structure form):
+ *   inputs: { node_<themeId>: block_header(caption = theme title),
+ *             node_<themeId>_subnodes: { content: [ lesson rows with node_id / parent_id(theme) / title / link / pass_* ] },
+ *             ... cs field pairs ... }
+ * `headerLevel` says what a bare node_<id> header is: 2 = theme under a module,
+ * 3 = lesson under a theme (the theme-level fallback response has no .content).
+ * Legacy rich `items` / `.subnodes` shapes are still honored.
+ */
 export function normalizeL2(
     courseId: number,
     parentNodeId: number,
     payload: any,
-    slug: string = ''
+    slug: string = '',
+    headerLevel: 2 | 3 = 3
 ): OutlineItem[] {
     if (Array.isArray(payload?.items) && payload.items.length)
         return payload.items.map((raw: any) => ({
@@ -89,49 +99,82 @@ export function normalizeL2(
     const items: OutlineItem[] = [];
     const inputs = payload?.inputs;
     if (inputs && typeof inputs === 'object' && !Array.isArray(inputs)) {
-        const keys = Object.keys(inputs).filter((key) => ID_RE.test(key));
-        keys.forEach((key) => {
+        type NodeItem = { nodeId: number; title: string; parentId: number; level: 2 | 3; order: number; locked: boolean; progress?: Progress };
+        const headersById = new Map<number, NodeItem>();
+        const subnodesById = new Map<number, any[]>();
+        let headerIdx = 0;
+
+        for (const key of Object.keys(inputs)) {
+            const byId = /^node_(\d+)$/.exec(key);
+            const bySub = /^node_(\d+)_subnodes$/.exec(key);
             const input = inputs[key];
-            const nodeId = Number(ID_RE.exec(key)?.[1] ?? input?.attrs?.id);
-            if (input?.subnodes && Array.isArray(input.subnodes)) {
-                // theme with lesson subnodes
-                items.push({
-                    nodeId,
-                    parentId: parentNodeId,
-                    level: 2,
-                    index: 0,
-                    order: 0,
-                    title: input.caption || String(input.value) || '',
-                    url: ''
-                } as unknown as OutlineItem);
-                (input.subnodes as any[]).forEach((sub, index) => {
-                    const subId = Number(sub.id ?? sub.key);
+            if (byId) {
+                // theme header on a module, lesson header on a theme
+                const headerNode = Number(byId[1]);
+                if (!headersById.has(headerNode)) {
+                    headersById.set(headerNode, {
+                        nodeId: headerNode,
+                        title: input?.caption || String(input?.value ?? ''),
+                        parentId: parentNodeId,
+                        level: headerLevel,
+                        order: ++headerIdx,
+                        locked: false
+                    });
+                }
+                if (input?.subnodes && Array.isArray(input.subnodes)) {
+                    subnodesById.set(headerNode, input.subnodes);
+                }
+            } else if (bySub) {
+                const themeNode = Number(bySub[1]);
+                // lesson rows live on the sibling custom input, in .content
+                const rows = Array.isArray(input?.content)
+                    ? input.content
+                    : Array.isArray(input?.subnodes)
+                    ? input.subnodes
+                    : [];
+                subnodesById.set(themeNode, rows);
+            }
+        }
+
+        headersById.forEach((header, nodeId) => {
+            const rows = subnodesById.get(nodeId);
+            if (header.level === 2) items.push(header as unknown as OutlineItem);
+            if (Array.isArray(rows) && rows.length) {
+                rows.forEach((row: any, index: number) => {
+                    const rowNodeId = Number(row.node_id !== undefined ? row.node_id : row.id);
                     items.push({
-                        nodeId: subId,
-                        parentId: nodeId,
+                        nodeId: rowNodeId,
+                        parentId: row.parent_id ?? nodeId,
                         level: 3,
-                        index: index + 1,
-                        order: Number(sub.order ?? index + 1),
-                        title: sub.title ?? sub.value ?? '',
-                        passing: sub.passing,
-                        progress: asStatus(sub.progress),
-                        locked: !!sub.locked,
-                        url: lessonUrl(slug, subId)
-                    } as OutlineItem);
+                        index: Number(row.index ?? row.order ?? index + 1),
+                        order: Number(row.order ?? row.index ?? index + 1),
+                        title: row.title ?? '',
+                        textHtml: row.text,
+                        passing: row.passing,
+                        progress: asStatus(
+                            row.pass_status && row.pass_status !== 'undefined'
+                                ? { percent: row.pass_percent, status: row.pass_status }
+                                : row.progress
+                        ),
+                        url: row.link ?? lessonUrl(slug, rowNodeId),
+                        selected: !!row.selected,
+                        locked: false
+                    });
                 });
-            } else {
+            } else if (header.level === 3) {
+                // theme-level fallback: the header itself is the lesson
                 items.push({
-                    nodeId,
+                    nodeId: header.nodeId,
                     parentId: parentNodeId,
                     level: 3,
                     index: 0,
                     order: 0,
-                    title: input.caption || String(input.value) || '',
-                    passing: input.passing,
-                    progress: asStatus(input.progress),
+                    title: header.title,
+                    passing: undefined,
+                    progress: undefined,
                     locked: false,
-                    url: lessonUrl(slug, nodeId)
-                } as OutlineItem);
+                    url: lessonUrl(slug, header.nodeId)
+                });
             }
         });
     }
@@ -280,15 +323,15 @@ export const coursesApi = {
         };
     },
 
-    /** L2 items for a parent module (themes) or theme (lessons). */
-    async structureL2(courseId: number, parentId: number, slug = ''): Promise<OutlineItem[]> {
+    /** L2 items for a parent module (themes + lesson rows) or parent theme (lesson rows). */
+    async structureL2(courseId: number, parentId: number, slug = '', headerLevel: 2 | 3 = 2): Promise<OutlineItem[]> {
         try {
             const payload = unwrap(
                 await fetcher(
                     `/api.php?r=bx_courses/entity_structure_l2_block/&params[]=${courseId}&params[]=${parentId}`
                 )
             );
-            return normalizeL2(courseId, parentId, payload, slug);
+            return normalizeL2(courseId, parentId, payload, slug, headerLevel);
         } catch (e) {
             console.warn('courses api: structureL2 failed', e);
             return [];
@@ -300,32 +343,39 @@ export const coursesApi = {
         const l1 = await coursesApi.structureL1(courseId);
         const items: OutlineItem[] = [...l1.items];
 
-        // Parallelize: every module's theme list and every theme's lesson list in one sweep.
-        const level = async (parentId: number, level: 2 | 3): Promise<OutlineItem[]> => {
-            try {
-                return (await coursesApi.structureL2(courseId, parentId, slug)).map((item) => ({
-                    ...item,
-                    parentId,
-                    level
-                }));
-            } catch {
-                return [];
-            }
-        };
-
+        // Module-level L2 already carries every theme AND every lesson row in UNA's
+        // module_structure form, so one call per module is the full curriculum.
+        // A theme-level call is only the fallback for rows UNA collapsed away.
         const themesByModule = await Promise.all(
-            l1.items.map((moduleItem) => level(moduleItem.nodeId, 2))
+            l1.items.map((moduleItem) => coursesApi.structureL2(courseId, moduleItem.nodeId, slug, 2))
         );
-        const moduleThemePairs = l1.items.flatMap((moduleItem, i) =>
-            (themesByModule[i] ?? []).map((theme) => ({ theme, moduleItem }))
-        );
-        const lessonsByTheme = await Promise.all(
-            moduleThemePairs.map(({ theme }) => level(theme.nodeId, 3))
-        );
-        moduleThemePairs.forEach(({ theme }, i) => {
-            (lessonsByTheme[i] ?? []).forEach((lesson) => {
-                if (themesByModule.some((themes) => themes.some((t) => t.nodeId === lesson.nodeId))) return;
-                items.push({ ...lesson, parentId: theme.nodeId, level: 3 });
+        themesByModule.forEach((moduleItems, moduleIdx) => items.push(...moduleItems));
+
+        // Fallback: only themes that came back with NO embedded lesson rows.
+        const bareThemeIds = new Set<number>();
+        themesByModule.forEach((moduleItems) => {
+            const themeNodeIds = moduleItems.filter((item) => item.level === 2).map((item) => item.nodeId);
+            const embedded = new Set(
+                moduleItems.filter((item) => item.level === 3).map((item) => item.parentId)
+            );
+            themeNodeIds.forEach((themeNodeId) => {
+                if (!embedded.has(themeNodeId)) bareThemeIds.add(themeNodeId);
+            });
+        });
+        const themeNodeIds = [...bareThemeIds];
+        const themeLessons = themeNodeIds.length
+            ? await Promise.all(
+                  themeNodeIds.map((themeNodeId) =>
+                      coursesApi.structureL2(courseId, themeNodeId, slug, 3)
+                  )
+              )
+            : [];
+        const seenNodeIds = new Set(items.map((item) => item.nodeId));
+        themeLessons.forEach((lessonItems) => {
+            lessonItems.forEach((lesson) => {
+                if (seenNodeIds.has(lesson.nodeId)) return;
+                seenNodeIds.add(lesson.nodeId);
+                items.push(lesson);
             });
         });
 
@@ -485,7 +535,8 @@ export const coursesApi = {
             const payload = unwrap(res);
             const items = itemsFromListBlock(payload);
             const summaries = items.map(summaryFromBrowseItem);
-            if (!withMembership || type === 'joined') return summaries;
+            if (type === 'joined') return summaries.map((summary) => ({ ...summary, enrolled: true }));
+            if (!withMembership) return summaries;
             // UNA membership is the single source of truth for Join/Continue on every surface.
             const ids = await coursesApi.getJoinedContentIds();
             return summaries.map((summary) => ({ ...summary, enrolled: ids.has(summary.id) }));
@@ -561,7 +612,39 @@ export const coursesApi = {
         } catch (e) {
             console.warn('courses api: favorite failed', e);
         }
-    }
+    },
+
+    /** Unpublish to draft: UNA's own servicePublish-equivalent hide (admin action). */
+    async hide(entryId: number): Promise<boolean> {
+        try {
+            await fetcher(`/api.php?r=bx_courses/hide/&params[]=${entryId}`);
+            this.invalidateJoined();
+            return true;
+        } catch (e) {
+            console.warn('courses api: hide failed', e);
+            return false;
+        }
+    },
+
+    /** Publish a hidden draft (UNA servicePublish under the hood). */
+    async publish(entryId: number): Promise<boolean> {
+        try {
+            await fetcher(`/api.php?r=bx_courses/publish/&params[]=${entryId}`);
+            this.invalidateJoined();
+            return true;
+        } catch (e) {
+            console.warn('courses api: publish failed', e);
+            return false;
+        }
+    },
+
+    /**
+     * Join / leave: UNA's shared connections object (bx_courses_fans) exposes no
+     * REST services — join/leave are its page actions with the UNA checks for
+     * free/paid/questionnaire/invite flows. The kit therefore routes both CTAs to
+     * UNA's own join flow page (/join-course-profile) and the original members
+     * grid (/course-fans) instead of bypassing those checks.
+     */
 };
 
 /** Map a UNA browse/search item to the kit CourseSummary. */
