@@ -237,8 +237,11 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                         await refreshOutline(outline.courseId);
                     }}
                     onOpenLessonEditor={async (nodeId) => {
-                        const l = await coursesApi.nodeBlock(outline.courseId, nodeId, slug);
-                        if (l) setLesson(l);
+                        // "Edit Steps goes straight to UNA's own edit page:
+                        // edit-course-content/<entry slug>?parent_id=<lesson>,
+                        // exactly the page UNA's redirect after publish lands on.
+                        const canonical = coursesApi.courseEditUrl ? await coursesApi.courseEditUrl(outline.courseId) : '';
+                        window.location.assign(canonical + '?parent_id=' + nodeId);
                     }}
                 />
             )}
