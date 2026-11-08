@@ -84,6 +84,13 @@ export function ManagePanel({
       action: () => onNavigateSub?.('students')
     },
     {
+      id: 'invite',
+      title: 'Invite Members to Course',
+      desc: 'UNA invite form for students and mentors, with its own role checks.',
+      icon: 'send',
+      action: () => onNavigateSub?.('invite')
+    },
+    {
       id: 'pricing',
       title: 'Pricing Plans & Enrollment',
       desc: 'Configure free or paid membership plans, subscriptions, and access terms.',

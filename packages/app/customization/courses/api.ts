@@ -628,6 +628,17 @@ export const coursesApi = {
         }
     },
 
+    /** UNA's members invite form block (owner/admins only, UNA checks roles). */
+    async entityInviteForm(entryId: number): Promise<Record<string, unknown> | null> {
+        try {
+            const res = await fetcher(`/api.php?r=bx_courses/entity_invite/&params[]=${entryId}`);
+            return entityFormBlock(res, 'entity_invite');
+        } catch (e) {
+            console.warn('courses api: entityInviteForm failed', e);
+            return null;
+        }
+    },
+
     /** Favorites toggle (offline-tolerant). */
     async favorite(courseProfileId: number): Promise<void> {
         try {

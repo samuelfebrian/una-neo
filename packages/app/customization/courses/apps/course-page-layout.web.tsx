@@ -34,9 +34,15 @@ import FallbackHome from 'app/components/page-layout/home';
 
 const COURSE_URIS = new Set<string>([
     'view-course-profile',
+    'view-course-profile-closed',
     'view-course-profile-node',
     'edit-course-content',
+    'edit-course-profile',
+    'edit-course-pricing',
+    'invite-to-course',
+    'delete-course-profile',
     'course-profile-info',
+    'course-profile-comments',
     'course-fans',
     'courses-home',
     'home',
@@ -460,6 +466,26 @@ function JoinApp({ data }: { data: any }) {
     );
 }
 
+/* ---------- Generic UNA page takeover (edit profile/pricing, invite, delete, comments) ---------- */
+
+function EntryApp({ data, title, desc }: { data: any; title: string; desc: string }) {
+    const blocks = unaBlocksBySource(data, () => true);
+    return (
+        <Frame>
+            <div className="mx-auto max-w-3xl space-y-4">
+                <div className="rounded-2xl border border-blue-100 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 p-4 sm:p-5">
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
+                    <p className="mt-1 text-sm text-slate-500">{desc}</p>
+                </div>
+                <KitPanel title={title} subtitle="UNA runs its own action under your session">
+                    <UnaBlocks blocks={blocks} />
+                </KitPanel>
+                {!blocks.length && <KitPanel title="Nothing to show">This page needs a signed-in account with the right role.</KitPanel>}
+            </div>
+        </Frame>
+    );
+}
+
 /* ---------- About (course-profile-info) ---------- */
 
 function AboutApp({ data }: { data: any }) {
@@ -486,8 +512,18 @@ function StudentsApp({ data }: { data: any }) {
         <Frame>
             <div className="space-y-4">
                 <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs">
-                    <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Students & Roles</h1>
-                    <p className="mt-1 text-sm text-slate-500">Manage members, invites and instructor roles.</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Students & Roles</h1>
+                            <p className="text-sm text-slate-500">Manage members, invites and instructor roles.</p>
+                        </div>
+                        <a
+                            href={`/invite-to-course/${((data?.url ?? '').match(/view-course-profile\/([^/?#]+)/) || [])[1] ?? ''}`}
+                            className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                            Invite Members →
+                        </a>
+                    </div>
                 </div>
                 <UnaBlocks blocks={blocks} />
                 {!blocks.length && <KitPanel title="No members visible">Sign in to see this course roster.</KitPanel>}
@@ -520,19 +556,30 @@ function CourseViewPage({ data }: { data: any }) {
     const [unaFormState, setUnaFormState] = useState<{ title: string; description?: string } | null>(null);
     const [unaFormBlocks, setUnaFormBlocks] = useState<Block[] | null>(null);
 
-    /** Fetch and show UNA's own edit/settings or delete form for this course. */
-    const openEntryForm = async (kind: 'edit' | 'delete') => {
+    /** Fetch and show UNA's own edit/settings, invite or delete form for this course. */
+    const openEntryForm = async (kind: 'edit' | 'delete' | 'invite') => {
         if (!course) return;
-        setUnaFormState({
-            title: kind === 'delete' ? `Delete "${course.title}"` : `Settings — ${course.title}`,
-            description: kind === 'delete' ? 'UNA confirms and applies the deletion with its own cascade rules.' : undefined
-        });
+        const titles: Record<string, { title: string; description?: string }> = {
+            edit: { title: `Settings — ${course.title}` },
+            delete: {
+                title: `Delete "${course.title}"`,
+                description: 'UNA confirms and applies the deletion with its own cascade rules.'
+            },
+            invite: { title: `Invite Members — ${course.title}` }
+        };
+        setUnaFormState(titles[kind] ?? null);
         setUnaFormBlocks(null);
         const block =
             kind === 'delete'
                 ? await coursesApi.entityDeleteForm(course.id)
+                : kind === 'invite'
+                ? await coursesApi.entityInviteForm(course.id)
                 : await coursesApi.entityEditForm(course.id);
-        setUnaFormBlocks(block ? [block] : []);
+        const entryBlocks: Block[] = [];
+        if (block) entryBlocks.push(block);
+        // UNA's own cover block carries the owner-only Change Cover / crop uploader.
+        if (kind === 'edit' && data?.cover_block) entryBlocks.push(data.cover_block);
+        setUnaFormBlocks(entryBlocks);
         if (!block) {
             // Form refused (no rights / already gone): fall back to the UNA entry page.
             setUnaFormState(null);
@@ -677,14 +724,15 @@ function CourseViewPage({ data }: { data: any }) {
                     if (section === 'content') {
                         window.location.assign(`/edit-course-content/${course.slug}`);
                     } else if (section === 'students') {
-                        const profileId = infoProfileId(course, data);
-                        if (profileId) window.location.assign(`/course-fans?profile_id=${profileId}`);
+                        window.location.assign(`/course-fans/${course.slug}`);
                     } else if (section === 'settings') {
                         openEntryForm('edit');
+                    } else if (section === 'invite') {
+                        openEntryForm('invite');
                     } else if (section === 'pricing') {
-                        // UNA's own pricing/join page carries the enrollment plans
-                        const slugForJoin = course.slug || infoSlugFromData(data);
-                        if (slugForJoin) window.location.assign(`/join-course-profile/${slugForJoin}`);
+                        // UNA's own pricing page (page.php?i=edit-course-pricing)
+                        const slugForPricing = course.slug || infoSlugFromData(data);
+                        if (slugForPricing) window.location.assign(`/edit-course-pricing/${slugForPricing}`);
                     }
                 }}
                 onDeleteCourse={() => {
@@ -723,10 +771,6 @@ function CourseViewPage({ data }: { data: any }) {
             />
         </div>
     );
-}
-
-function infoProfileId(course: Course | null, data?: any): number {
-    return course?.profileId || Number(data?.cover_block?.profile?.id ?? 0);
 }
 
 function infoSlugFromData(data?: any): string {
@@ -774,6 +818,22 @@ function CourseTakeoverView({ uri, data }: { uri: string; data: any }) {
                 {uri === 'courses-administration' && <AdminApp data={data} />}
                 {uri === 'create-course-profile' && <CreateApp data={data} />}
                 {uri === 'join-course-profile' && <JoinApp data={data} />}
+                {uri === 'edit-course-profile' && (
+                    <EntryApp data={data} title="Edit Course" desc="UNA's own entry edit form — every field, every check." />
+                )}
+                {uri === 'edit-course-pricing' && (
+                    <EntryApp data={data} title="Course Pricing" desc="UNA's pricing grid: plans, billing and access terms." />
+                )}
+                {uri === 'invite-to-course' && (
+                    <EntryApp data={data} title="Invite Members" desc="UNA's invite form: members, roles and welcome notes." />
+                )}
+                {uri === 'delete-course-profile' && (
+                    <EntryApp data={data} title="Delete Course" desc="UNA's delete form with its own confirm and cascade rules." />
+                )}
+                {uri === 'course-profile-comments' && (
+                    <EntryApp data={data} title="Course Comments" desc="UNA's comment views for this course." />
+                )}
+                {uri === 'view-course-profile-closed' && <CourseViewPage data={data} />}
                 {uri === 'course-profile-info' && <AboutApp data={data} />}
                 {uri === 'course-fans' && <StudentsApp data={data} />}
                 {uri === 'view-course-profile' && <CourseViewPage data={data} />}
