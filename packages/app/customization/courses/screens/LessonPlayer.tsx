@@ -22,6 +22,8 @@ import { Modal } from '../primitives/Modal';
 import { RenderIcon } from '../primitives/IconSlot';
 import { AgentEntry } from './AgentEntry';
 import { defaultT } from '../tokens/i18n';
+import { Link } from 'app/lib/hooks/router';
+import { appPath } from '../apps/app-path';
 import ElementEntityPoll from 'app/components/elements/entity-poll';
 
 export interface LessonPlayerProps {
@@ -108,12 +110,12 @@ function PollStepBody({
             )}
 
             {failed && step.link && (
-                <a
-                    href={step.link}
+                <Link
+                    href={appPath(step.link)}
                     className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                 >
                     Open the poll page
-                </a>
+                </Link>
             )}
         </div>
     );

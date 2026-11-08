@@ -6,11 +6,14 @@
  * matching the full-page takeover experience.
  */
 import { useEffect, useState } from 'react';
+import { useRouter } from 'app/lib/hooks/router';
+import { appPath } from './app-path';
 import { normalizeL2 } from '../api';
 import type { OutlineItem } from '../types';
 import type { ModuleAppProps } from './module-app.types';
 
 export default function ModuleApp(props: ModuleAppProps) {
+    const router = useRouter();
     const direct = props.data?.items;
     const [items, setItems] = useState<OutlineItem[]>(
         Array.isArray(direct) ? (direct as unknown as OutlineItem[]) : []
@@ -53,12 +56,13 @@ function withLessonLinks(items: OutlineItem[], slug: string): OutlineItem[] {
 }
 
 function LessonRows({ items }: { items: OutlineItem[] }) {
+    const router = useRouter();
     return (
         <div className="space-y-2">
             {items.map((item) => (
                 <div
                     key={item.nodeId}
-                    onClick={() => item.url && window.location.assign(item.url)}
+                    onClick={() => item.url && router.push(appPath(item.url))}
                     className="flex items-center justify-between p-3 rounded-xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-500/40 cursor-pointer select-none transition-all"
                 >
                     <div className="flex items-center gap-3 min-w-0 pr-3">

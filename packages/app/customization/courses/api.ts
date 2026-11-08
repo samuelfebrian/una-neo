@@ -283,6 +283,22 @@ export const coursesApi = {
         }
     },
 
+    /** UNA's canonical edit-course-content permalink for a course entry
+     * (module service GetCourseEditUrl, relative path like /edit-course-content/<slug>-<id>). */
+    async courseEditUrl(courseId: number): Promise<string> {
+        try {
+            const res = await fetcher(
+                `/api.php?r=bx_courses/GetCourseEditUrl/&params[]=${courseId}`
+            );
+            const url = String(res?.data ?? '').trim();
+            if (!url) return '';
+            return url.startsWith('/') ? url : `/${url.replace(/^\/+/, '')}`;
+        } catch (e) {
+            console.warn('courses api: courseEditUrl failed', e);
+            return '';
+        }
+    },
+
     async structureL1(courseId: number): Promise<{ items: OutlineItem[]; isEditable: boolean; entryId: number }> {
         const payload = unwrap(
             await fetcher(

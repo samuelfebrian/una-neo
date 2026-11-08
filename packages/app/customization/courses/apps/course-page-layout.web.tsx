@@ -10,6 +10,8 @@
  * filters, create/info forms, grids).
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, Link } from 'app/lib/hooks/router';
+import { appPath } from './app-path';
 import Page from 'app/ui/molecules/page/page';
 import PageFooter from 'app/components/nav/menu-footer';
 import { BlockByData } from 'app/components/block';
@@ -141,6 +143,7 @@ function KitPanel({ title, subtitle, children }: { title: string; subtitle?: str
 /* ---------- Hub (courses-home) ---------- */
 
 function HubApp({ data }: { data: any }) {
+    const router = useRouter();
     const [recent, setRecent] = useState<CourseSummary[]>([]);
     const [featured, setFeatured] = useState<CourseSummary[]>([]);
     const [top, setTop] = useState<CourseSummary[]>([]);
@@ -175,7 +178,7 @@ function HubApp({ data }: { data: any }) {
 
     const onOpen = (arg: CourseSummary | string) => {
         const url = typeof arg === 'string' ? arg : arg.url;
-        if (url) window.location.assign(url);
+        if (url) router.push(appPath(url));
     };
 
     // UNA's entry-page auth blocks (login/create account) stay embedded for guests.
@@ -201,13 +204,13 @@ function HubApp({ data }: { data: any }) {
                     ]}
                     inProgressCourses={[]}
                     isManager={false}
-                    onSearch={() => window.location.assign('/courses-search')}
-                    onSelectCategory={() => window.location.assign('/courses-search')}
-                    onOpenCourse={(url: string) => url && window.location.assign(url)}
+                    onSearch={() => router.push('/courses-search')}
+                    onSelectCategory={() => router.push('/courses-search')}
+                    onOpenCourse={(url: string) => url && router.push(appPath(url))}
                     onContinueCourse={(c: CourseSummary) => onOpen(c.url)}
                     onJoinCourse={(c: CourseSummary) => onOpen(c.url)}
-                    onCreateCourse={() => window.location.assign('/create-course-profile')}
-                    onBrowseAll={() => window.location.assign('/courses-search')}
+                    onCreateCourse={() => router.push('/create-course-profile')}
+                    onBrowseAll={() => router.push('/courses-search')}
                     onFavorite={async (c: CourseSummary) => coursesApi.favorite(c.profileId)}
                     favoritedSlugs={[]}
                 />
@@ -229,6 +232,7 @@ function HubApp({ data }: { data: any }) {
 /* ---------- Catalog (courses-search) ---------- */
 
 function CatalogApp({ data }: { data: any }) {
+    const router = useRouter();
     const [courses, setCourses] = useState<CourseSummary[]>([]);
     const [favoritedSlugs, setFavorites] = useState<string[]>([]);
     const [searchRail, setSearchRail] = useState<Block[]>([]);
@@ -264,9 +268,9 @@ function CatalogApp({ data }: { data: any }) {
             courses={courses}
             categories={[...new Set(courses.map((c: CourseSummary) => c.category).filter((category): category is string => Boolean(category)))]}
             tags={[...new Set(courses.flatMap((c: CourseSummary) => c.labels ?? []))].filter((label): label is string => Boolean(label))}
-            onOpenCourse={(url: string) => url && window.location.assign(url)}
-            onContinueCourse={(c: CourseSummary) => c.url && window.location.assign(c.url)}
-            onJoinCourse={(c: CourseSummary) => c.url && window.location.assign(c.url)}
+            onOpenCourse={(url: string) => url && router.push(appPath(url))}
+            onContinueCourse={(c: CourseSummary) => c.url && router.push(appPath(c.url))}
+            onJoinCourse={(c: CourseSummary) => c.url && router.push(appPath(c.url))}
             onFavorite={(c: CourseSummary) => {
                 coursesApi.favorite(c.profileId);
                 setFavorites((prev) => (prev.includes(c.slug) ? prev.filter((s) => s !== c.slug) : [...prev, c.slug]));
@@ -284,6 +288,7 @@ function CatalogApp({ data }: { data: any }) {
 /* ---------- My Courses (courses-joined) ---------- */
 
 function MyCoursesApp({ data }: { data: any }) {
+    const router = useRouter();
     const [attended, setAttended] = useState<CourseSummary[]>([]);
     const [created, setCreated] = useState<CourseSummary[]>([]);
     const [loading, setLoading] = useState(true);
@@ -312,16 +317,16 @@ function MyCoursesApp({ data }: { data: any }) {
                 <MyCourses
                     attendedCourses={attended}
                     createdCourses={created}
-                    onOpenCourse={(url: string) => url && window.location.assign(url)}
-                    onContinueCourse={(c: CourseSummary) => c.url && window.location.assign(c.url)}
+                    onOpenCourse={(url: string) => url && router.push(appPath(url))}
+                    onContinueCourse={(c: CourseSummary) => c.url && router.push(appPath(c.url))}
                     onEditCourse={(c: CourseSummary) =>
                         c.url
-                            ? window.location.assign(
+                            ? router.push(
                                   `/edit-course-content/${c.slug}`
                               )
                             : undefined
                     }
-                    onCreateCourse={() => window.location.assign('/create-course-profile')}
+                    onCreateCourse={() => router.push('/create-course-profile')}
                 />
                 {!loading && !attended.length && (
                     <KitPanel title="No learning yet">Join a track from the catalog to see it here.</KitPanel>
@@ -339,6 +344,7 @@ function MyCoursesApp({ data }: { data: any }) {
 /* ---------- Admin grid (courses-administration) ---------- */
 
 function AdminApp({ data }: { data: any }) {
+    const router = useRouter();
     const [created, setCreated] = useState<CourseSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [unaFormState, setUnaFormState] = useState<{ title: string; description?: string } | null>(null);
@@ -388,13 +394,13 @@ function AdminApp({ data }: { data: any }) {
                             const course = created.find((c) => c.id === courseId);
                             if (!course) return;
                             if (action === 'audit_content' || action === 'edit' || action === 'manage') {
-                                window.location.assign(`/edit-course-content/${course.slug}`);
+                                router.push(`/edit-course-content/${course.slug}`);
                             } else if (action === 'settings') {
                                 openEntryForm('edit', course.id, course.title);
                             } else if (action === 'delete') {
                                 openEntryForm('delete', course.id, course.title);
                             } else if (action === 'add' || action === 'create') {
-                                window.location.assign('/create-course-profile');
+                                router.push('/create-course-profile');
                             }
                         }}
                     />
@@ -459,7 +465,7 @@ function JoinApp({ data }: { data: any }) {
                 </KitPanel>
                 {!blocks.length && <KitPanel title="Sign in required">Joining a course needs a member account.</KitPanel>}
                 <div className="text-center">
-                    <a href="/courses-search" className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Back to catalog</a>
+                    <Link href="/courses-search" className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Back to catalog</Link>
                 </div>
             </div>
         </Frame>
@@ -517,12 +523,12 @@ function StudentsApp({ data }: { data: any }) {
                             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Students & Roles</h1>
                             <p className="text-sm text-slate-500">Manage members, invites and instructor roles.</p>
                         </div>
-                        <a
+                        <Link
                             href={`/invite-to-course/${((data?.url ?? '').match(/view-course-profile\/([^/?#]+)/) || [])[1] ?? ''}`}
                             className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                         >
                             Invite Members →
-                        </a>
+                        </Link>
                     </div>
                 </div>
                 <UnaBlocks blocks={blocks} />
@@ -546,6 +552,7 @@ function buildMembers(block: any): Member[] {
 }
 
 function CourseViewPage({ data }: { data: any }) {
+    const router = useRouter();
     const [course, setCourse] = useState<Course | null>(null);
     const [outline, setOutline] = useState<Outline | null>(null);
     const [related, setRelated] = useState<CourseSummary[]>([]);
@@ -586,7 +593,7 @@ function CourseViewPage({ data }: { data: any }) {
         if (!block) {
             // Form refused (no rights / already gone): fall back to the UNA entry page.
             setUnaFormState(null);
-            if (course.url) window.location.assign(course.url);
+            if (course.url) router.push(appPath(course.url));
         }
     };
 
@@ -676,8 +683,9 @@ function CourseViewPage({ data }: { data: any }) {
     );
     const onOpenLesson = (nodeId: number) => {
         const lesson = outline?.items?.find((i) => i.nodeId === nodeId);
-        if (lesson?.url) window.location.assign(lesson.url);
-        else if (slug) window.location.assign(`/view-course-profile/${slug}`);
+        // client-side transition into the lesson player — no document reload
+        if (lesson?.url) router.push(appPath(lesson.url));
+        else if (slug) router.push(`/view-course-profile/${slug}`);
     };
 
     // Resources tab: aggregate real UNA lesson attachments once, on first open.
@@ -725,9 +733,9 @@ function CourseViewPage({ data }: { data: any }) {
                 onOpenLesson={onOpenLesson}
                 onManageNavigate={(section) => {
                     if (section === 'content') {
-                        window.location.assign(`/edit-course-content/${course.slug}`);
+                        router.push(`/edit-course-content/${course.slug}`);
                     } else if (section === 'students') {
-                        window.location.assign(`/course-fans/${course.slug}`);
+                        router.push(`/course-fans/${course.slug}`);
                     } else if (section === 'settings') {
                         openEntryForm('edit');
                     } else if (section === 'invite') {
@@ -735,7 +743,7 @@ function CourseViewPage({ data }: { data: any }) {
                     } else if (section === 'pricing') {
                         // UNA's own pricing page (page.php?i=edit-course-pricing)
                         const slugForPricing = course.slug || infoSlugFromData(data);
-                        if (slugForPricing) window.location.assign(`/edit-course-pricing/${slugForPricing}`);
+                        if (slugForPricing) router.push(`/edit-course-pricing/${slugForPricing}`);
                     }
                 }}
                 onDeleteCourse={() => {
@@ -745,7 +753,7 @@ function CourseViewPage({ data }: { data: any }) {
                     // UNA's join flow keeps its own page (join course -> confirm/pricing);
                     // the takeover renders it too (`join-course-profile` in COURSE_URIS).
                     const slugForJoin = course.slug || infoSlugFromData(data);
-                    if (slugForJoin) window.location.assign(`/join-course-profile/${slugForJoin}`);
+                    if (slugForJoin) router.push(`/join-course-profile/${slugForJoin}`);
                     else window.location.reload();
                 }}
                 onFavorite={async () => coursesApi.favorite(course.profileId)}

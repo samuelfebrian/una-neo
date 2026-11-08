@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'app/lib/hooks/router';
+import { appPath } from './app-path';
 import AccordionItem from '../primitives/Accordion';
 import ProgressRing from '../primitives/ProgressRing';
 import { RenderIcon } from '../primitives/IconSlot';
@@ -14,6 +16,7 @@ import type { NodeId, OutlineItem } from '../types';
  * numbered accordion of modules, progress rings, lesson rows with status.
  */
 export default function CourseApp(props: CourseAppProps) {
+    const router = useRouter();
     const [outline, setOutline] = useState<OutlineItem[] | null>(null);
     const [isOwner, setIsOwner] = useState(false);
     const [slug, setSlug] = useState('');
@@ -64,8 +67,8 @@ export default function CourseApp(props: CourseAppProps) {
                     <button
                         type="button"
                         onClick={() => {
-                            const slugPart = slug ? `/view-course-profile/${slug}` : '';
-                            if (slugPart) window.location.assign(`/edit-course-content/${slug}`);
+                            // client-side transition into the outline editor
+                            if (slug) router.push(`/edit-course-content/${slug}`);
                         }}
                         className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500 transition-colors cursor-pointer flex items-center gap-1.5"
                     >
@@ -107,7 +110,7 @@ export default function CourseApp(props: CourseAppProps) {
                                     return (
                                         <div
                                             key={lesson.nodeId}
-                                            onClick={() => lesson.url && window.location.assign(lesson.url)}
+                                            onClick={() => lesson.url && router.push(appPath(lesson.url))}
                                             className={`flex items-center justify-between p-3 rounded-xl border transition-all select-none ${
                                                 lesson.locked
                                                     ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60 cursor-not-allowed'

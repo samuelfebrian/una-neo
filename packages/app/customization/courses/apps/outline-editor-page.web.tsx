@@ -7,6 +7,8 @@
  * UNA page blocks (timing, tools) stay embedded below the editor.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, Link } from 'app/lib/hooks/router';
+import { appPath } from './app-path';
 import { BlockByData } from 'app/components/block';
 import { Modal } from '../primitives/Modal';
 import OutlineEditor from '../screens/OutlineEditor';
@@ -27,6 +29,7 @@ function unaBlocks(data: any): Block[] {
 }
 
 export default function OutlineEditorPageApp({ data }: { data: any }) {
+    const router = useRouter();
     const [outline, setOutline] = useState<Outline | null>(null);
     const [slug, setSlug] = useState('');
     const [isOwner, setIsOwner] = useState(false);
@@ -104,12 +107,12 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                     <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Curriculum Studio</h1>
                     <p className="text-xs text-slate-500">Modules, themes and lessons - order, titles and pass rules.</p>
                 </div>
-                <a
+                <Link
                     href={backUrl}
                     className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200"
                 >
                     Back to course
-                </a>
+                </Link>
             </div>
 
             {notice && (
@@ -150,7 +153,9 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             const uri = uriByModule[contentType] ?? '';
                             // context_pid must be the course's PROFILE id — UNA resolves
                             // BxDolProfile::getInstance(abs(allow_view_to)) after publish.
-                            window.location.assign(
+                            // context_* params ride along; UNA's own form response
+                            // carries the redirect back to this lesson node.
+                            router.push(
                                 `/${uri}?context_pid=${courseProfileId || lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
                             );
                         }}
@@ -169,7 +174,7 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                                 // fallback to the step link below
                             }
                             const editPath = contentEditPath(contentLink);
-                            if (editPath) window.location.assign(editPath);
+                            if (editPath) router.push(appPath(editPath));
                             else setNotice('UNA has no edit page for this content type: ' + (step.contentType || 'unknown') + ' (content link: ' + (contentLink || 'none') + ')');
                         }}
                         onDeleteStep={async (stepId) => {
@@ -241,7 +246,7 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                         // edit-course-content/<entry slug>?parent_id=<lesson>,
                         // exactly the page UNA's redirect after publish lands on.
                         const canonical = coursesApi.courseEditUrl ? await coursesApi.courseEditUrl(outline.courseId) : '';
-                        window.location.assign(canonical + '?parent_id=' + nodeId);
+                        router.push(appPath(canonical) + '?parent_id=' + nodeId);
                     }}
                 />
             )}

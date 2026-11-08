@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'app/lib/hooks/router';
+import { appPath } from './app-path';
 import LessonPlayer from '../screens/LessonPlayer';
 import type { Lesson as LessonType, OutlineItem, Step } from '../types';
 import { coursesApi } from '../api';
@@ -18,6 +20,8 @@ export default function LessonApp(props: LessonAppProps) {
     const [outline, setOutline] = useState<{ courseId: number; isEditable: boolean; items: OutlineItem[] } | null>(null);
     const [slug, setSlug] = useState('');
     const outlineRef = useRef<{ courseId: number; isEditable: boolean; items: OutlineItem[] } | null>(null);
+    /** Client-side navigation: switching lessons fetches only the next page data — no document reload. */
+    const router = useRouter();
 
     // Attach the sequential prev/next lesson the player's bottom bar and teaser render.
     const attachNav = useCallback(
@@ -167,7 +171,7 @@ export default function LessonApp(props: LessonAppProps) {
             dir === undefined
                 ? lessonItems.find((i) => i.nodeId === nodeId)
                 : lessonItems[dir === 'next' ? Math.min(currentIndex + 1, lessonItems.length - 1) : Math.max(currentIndex - 1, 0)];
-        if (target?.url) window.location.assign(target.url);
+        if (target?.url) router.push(appPath(target.url));
     };
 
     if (!lesson) {
@@ -187,7 +191,7 @@ export default function LessonApp(props: LessonAppProps) {
             onSelectLesson={(nodeId) => onOpenLessonByNav(nodeId)}
             onNextLesson={(nodeId) => onOpenLessonByNav(nodeId, 'next')}
             onPrevLesson={(nodeId) => onOpenLessonByNav(nodeId, 'prev')}
-            onBackToCourse={() => slug && window.location.assign(`/view-course-profile/${slug}`)}
+            onBackToCourse={() => slug && router.push(`/view-course-profile/${slug}`)}
         />
     );
 }
