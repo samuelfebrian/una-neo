@@ -557,7 +557,7 @@ function CourseViewPage({ data }: { data: any }) {
     const [unaFormBlocks, setUnaFormBlocks] = useState<Block[] | null>(null);
 
     /** Fetch and show UNA's own edit/settings, invite or delete form for this course. */
-    const openEntryForm = async (kind: 'edit' | 'delete' | 'invite') => {
+    const openEntryForm = async (kind: 'edit' | 'delete' | 'invite' | 'share') => {
         if (!course) return;
         const titles: Record<string, { title: string; description?: string }> = {
             edit: { title: `Settings — ${course.title}` },
@@ -565,12 +565,15 @@ function CourseViewPage({ data }: { data: any }) {
                 title: `Delete "${course.title}"`,
                 description: 'UNA confirms and applies the deletion with its own cascade rules.'
             },
-            invite: { title: `Invite Members — ${course.title}` }
+            invite: { title: `Invite Members — ${course.title}` },
+            share: { title: `Share — ${course.title}` }
         };
         setUnaFormState(titles[kind] ?? null);
         setUnaFormBlocks(null);
         const block =
-            kind === 'delete'
+            kind === 'share'
+                ? await coursesApi.socialSharingBlock(course.id)
+                : kind === 'delete'
                 ? await coursesApi.entityDeleteForm(course.id)
                 : kind === 'invite'
                 ? await coursesApi.entityInviteForm(course.id)
@@ -746,6 +749,9 @@ function CourseViewPage({ data }: { data: any }) {
                     else window.location.reload();
                 }}
                 onFavorite={async () => coursesApi.favorite(course.profileId)}
+                onShare={async () => {
+                    await openEntryForm('share');
+                }}
                 onPublishCourse={async (c) => {
                     if (await coursesApi.publish(c.id)) window.location.reload();
                 }}
