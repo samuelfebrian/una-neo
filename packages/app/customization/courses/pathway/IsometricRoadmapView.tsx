@@ -344,7 +344,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
 
         {/* Segments HUD status */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-xl backdrop-blur-md text-xs text-zinc-300 font-mono">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
           <span>Segments: {loadedSegments}/{totalSegments}</span>
         </div>
       </div>
@@ -585,7 +585,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1 bg-zinc-950/90 border border-blue-400/80 rounded-full shadow-[0_0_20px_rgba(56,189,248,0.6)] backdrop-blur-md text-[10px] text-blue-200 font-bold whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-all"
                 title={`Study Squad with ${squadPeerInfo.peer.name}! Click to open Study Squad & Raid Hub`}
               >
-                <Sparkles className="w-3.5 h-3.5 text-blue-300 animate-spin" style={{ animationDuration: '4s' }} />
+                <Sparkles className="w-3.5 h-3.5 text-blue-300" />
                 <span>Study Squad · +15% XP Synergy</span>
               </button>
             </div>
@@ -651,12 +651,13 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                 }}
               >
                 {/* 1. GOOGLE MAPS STYLE FLOATING AVATAR BEACON (For Current User with 7-Day Neon Halo) */}
+                {/* Performance: static beacon, all continuous ping/halo/bounce animations removed */}
                 {isCurrentUserHere && (
-                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-none animate-bounce-slow">
+                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-none">
                     {/* Circle Avatar with Glow Rings and 7-Day Streak Neon Halo */}
                     <div className="relative">
                       {hasNeonHalo && (
-                        <span className="absolute -inset-2.5 rounded-full ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(251,191,36,0.9)] neon-halo-effect pointer-events-none" />
+                        <span className="absolute -inset-2.5 rounded-full ring-2 ring-amber-400/90 shadow-[0_0_25px_rgba(251,191,36,0.9)] pointer-events-none" />
                       )}
                       <div className="w-12 h-12 rounded-full ring-3 ring-blue-400 shadow-[0_0_25px_rgba(56,189,248,0.8)] overflow-hidden bg-zinc-900 flex items-center justify-center">
                         <img
@@ -666,8 +667,6 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                           referrerPolicy="no-referrer"
                         />
                       </div>
-                      {/* Pulsing Radar Ring */}
-                      <span className="absolute -inset-1 rounded-full ring-2 ring-blue-400 animate-ping opacity-75" />
                     </div>
 
                     {/* Downward Location Beacon Pin */}
