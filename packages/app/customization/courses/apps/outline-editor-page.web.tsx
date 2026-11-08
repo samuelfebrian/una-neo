@@ -35,6 +35,8 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
     const [notice, setNotice] = useState('');
     const [addNodeBlock, setAddNodeBlock] = useState<Block | null>(null);
     const [addNodeTitle, setAddNodeTitle] = useState('');
+    /** The course's PROFILE id (context_pid for UNA step creation — NOT the content id). */
+    const [courseProfileId, setCourseProfileId] = useState(0);
 
     const refreshOutline = useCallback(async (courseId: number) => {
         setOutline(await coursesApi.fullOutline(courseId, slug, true));
@@ -57,6 +59,7 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
             if (contentId) {
                 setOutline(await coursesApi.fullOutline(contentId, s, l1.isEditable));
             }
+            if (coverProfileId) setCourseProfileId(coverProfileId);
         })();
         return () => {
             cancelled = true;
@@ -125,13 +128,13 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             const uriByModule: Record<string, string> = {
                                 bx_videos: 'create-video',
                                 bx_classes: 'create-class',
-                                bx_posts: 'create-post',
-                                bx_polls: 'create-poll',
-                                bx_files: 'create-file'
+                                bx_posts: 'create-post'
                             };
                             const uri = uriByModule[contentType] ?? '';
+                            // context_pid must be the course's PROFILE id — UNA resolves
+                            // BxDolProfile::getInstance(abs(allow_view_to)) after publish.
                             window.location.assign(
-                                `/${uri}?context_pid=${lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
+                                `/${uri}?context_pid=${courseProfileId || lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
                             );
                         }}
                         onDeleteStep={async (stepId) => {

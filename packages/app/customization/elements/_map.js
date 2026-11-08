@@ -9,9 +9,15 @@ import { componentsMapDefault } from 'app/components/elements/_map';
 import CourseApp from 'app/customization/courses/apps/course-app';
 import LessonApp from 'app/customization/courses/apps/lesson-app';
 import ModuleApp from 'app/customization/courses/apps/module-app';
+import ElementHtmlString from './html-string';
 
 componentsMapDefault['course_structure'] = CourseApp;
 componentsMapDefault['lesson_structure'] = LessonApp;
 componentsMapDefault['module_structure'] = ModuleApp;
+
+// UNA page blocks whose service returns a bare HTML string arrive with no `type`
+// at all (`content_type` unset too — e.g. `bx_videos:entity_context`), and land in
+// the "Undefined element type" fallback. Render them as HTML.
+componentsMapDefault[''] = ElementHtmlString;
 
 export const componentsMap = componentsMapDefault

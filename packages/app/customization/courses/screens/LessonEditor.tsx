@@ -49,12 +49,13 @@ export function LessonEditor({
   const [newStepTitle, setNewStepTitle] = useState('');
   const [deleteStepId, setDeleteStepId] = useState<number | null>(null);
 
+  // UNA's per-course step content modules (Studio option `bx_courses_content_modules_st`):
+  // videos, classes and posts. Polls aren't installed on this site and files aren't
+  // a valid step type, so offering them would only lead to UNA's 404.
   const contentTypes = [
     { key: 'bx_videos', label: 'Video Lesson' },
     { key: 'bx_classes', label: 'Interactive Class / Lab' },
-    { key: 'bx_posts', label: 'Rich Article / Notes' },
-    { key: 'bx_polls', label: 'Knowledge Poll / Quiz' },
-    { key: 'bx_files', label: 'Downloadable File Resource' }
+    { key: 'bx_posts', label: 'Rich Article / Notes' }
   ];
 
   const handleSaveDetails = (e: React.FormEvent) => {
