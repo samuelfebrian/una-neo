@@ -9,7 +9,7 @@
  * the design where the kit has no direct equivalent (students tables, search
  * filters, create/info forms, grids).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, Link } from 'app/lib/hooks/router';
 import { appPath } from './app-path';
 import Page from 'app/ui/molecules/page/page';
@@ -365,6 +365,13 @@ function AdminApp({ data }: { data: any }) {
         if (!block) setUnaFormState(null);
     };
 
+    /** The governed list is client data; reload it after a UNA form closes
+     * instead of reloading the whole document. */
+    const loadCreated = useCallback(async () => {
+        setCreated(await coursesApi.browse('created', 0, 50));
+        setLoading(false);
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -419,9 +426,10 @@ function AdminApp({ data }: { data: any }) {
                     state={unaFormState}
                     blocks={unaFormBlocks}
                     onClose={() => {
+                        const wasDelete = Boolean(unaFormState && unaFormState.title.startsWith('Delete'));
                         setUnaFormState(null);
-                        // A finished UNA delete changes the ownership list — reload it.
-                        if (unaFormState && unaFormState.title.startsWith('Delete')) window.location.reload();
+                        // A finished UNA delete changes the ownership list — refetch that list.
+                        if (wasDelete) void loadCreated();
                     }}
                 />
             </div>
@@ -754,17 +762,17 @@ function CourseViewPage({ data }: { data: any }) {
                     // the takeover renders it too (`join-course-profile` in COURSE_URIS).
                     const slugForJoin = course.slug || infoSlugFromData(data);
                     if (slugForJoin) router.push(`/join-course-profile/${slugForJoin}`);
-                    else window.location.reload();
+                    else router.refresh();
                 }}
                 onFavorite={async () => coursesApi.favorite(course.profileId)}
                 onShare={async () => {
                     await openEntryForm('share');
                 }}
                 onPublishCourse={async (c) => {
-                    if (await coursesApi.publish(c.id)) window.location.reload();
+                    if (await coursesApi.publish(c.id)) router.refresh();
                 }}
                 onUnpublishCourse={async (c) => {
-                    if (await coursesApi.hide(c.id)) window.location.reload();
+                    if (await coursesApi.hide(c.id)) router.refresh();
                 }}
                 onAddModuleOrLesson={undefined}
                 isFavorited={false}
@@ -779,8 +787,9 @@ function CourseViewPage({ data }: { data: any }) {
                 state={unaFormState}
                 blocks={unaFormBlocks}
                 onClose={() => {
+                    // UNA's delete form redirects on success; closing the dialog
+                    // (cancel) needs no refresh of the current page.
                     setUnaFormState(null);
-                    if (unaFormState && unaFormState.title.startsWith('Delete')) window.location.reload();
                 }}
             />
         </div>

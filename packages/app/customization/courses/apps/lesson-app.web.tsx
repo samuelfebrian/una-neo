@@ -150,22 +150,10 @@ export default function LessonApp(props: LessonAppProps) {
         };
     }, [props.data, props.url, props.uri]);
 
-    const onPassStep = (dataId: number) => {
-        coursesApi.passData(dataId).then(() => {
-            const nodeId = routeNodeId ?? pageNodeId(props.url);
-            if (nodeId != null && lesson) {
-                buildLesson(nodeId, props.data, lesson.courseId, slug).then((built) => setLesson(attachNav(built, outlineRef.current)));
-            }
-        });
-    };
-
-    const onPassOrResetLesson = (nodeId: number) => {
-        coursesApi.passNode(nodeId).then(() => {
-            if (lesson) buildLesson(nodeId, props.data, lesson.courseId, slug).then((built) => setLesson(attachNav(built, outlineRef.current)));
-        });
-    };
-
-    /** Load one lesson node and show it without touching the route. */
+    /** Load one lesson node and show it without touching the route. Always the
+     * single source of truth for the visible lesson — used by the sidebar,
+     * next/prev, pass/reset and popstate, so no caller can fall back to the
+     * initial page payload after switching. */
     const loadLessonNode = useCallback(
         async (targetNodeId: number): Promise<boolean> => {
             const courseId = outlineRef.current?.courseId ?? 0;
@@ -177,6 +165,19 @@ export default function LessonApp(props: LessonAppProps) {
         },
         [attachNav, slug]
     );
+
+    const onPassStep = (dataId: number) => {
+        coursesApi.passData(dataId).then(() => {
+            const nodeId = routeNodeId ?? pageNodeId(props.url);
+            if (nodeId != null) void loadLessonNode(nodeId);
+        });
+    };
+
+    const onPassOrResetLesson = (nodeId: number) => {
+        coursesApi.passNode(nodeId).then(() => {
+            void loadLessonNode(nodeId);
+        });
+    };
 
     // Browser Back/Forward between lessons: pushState changed the URL without a
     // route navigation, so the player restores the lesson from `node_id` here.
