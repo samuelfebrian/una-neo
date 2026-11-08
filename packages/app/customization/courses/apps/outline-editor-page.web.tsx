@@ -167,12 +167,21 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                                 `/${uri}?context_pid=${courseProfileId || lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
                             );
                         }}
-                        onEditStep={(step: Step) => {
-                            // UNA's own edit page for the step's content (the same
-                            // edit-video / edit-class / edit-post pages UNA's entry
-                            // menus open), found from the step's content URL.
-                            const editPath = contentEditPath(step.link || step?.video?.src || '');
+                        onEditStep={async (step: Step) => {
+                            // UNA's own edit page for the step's content. The step's
+                            // content link comes from UNA's authoring grid row (the same
+                            // URLs UNA's per-row menu shows); view→edit mapping turns
+                            // view-video / view-class / view-poll into the edit pages.
+                            let contentLink = (step.link || step?.video?.src || '');
+                            try {
+                                const links = await coursesApi.stepContentLinks(lesson.courseId, lesson.nodeId);
+                                contentLink = links[String(step.id)] || contentLink;
+                            } catch {
+                                // fallback to the step link below
+                            }
+                            const editPath = contentEditPath(contentLink);
                             if (editPath) window.location.assign(editPath);
+                            else setNotice('UNA has no edit page for this content type: ' + (step.contentType || 'unknown') + ' (content link: ' + (contentLink || 'none') + ')');
                         }}
                         onDeleteStep={async (stepId) => {
                             await coursesApi.dataManageDelete(lesson.courseId, lesson.nodeId, stepId);

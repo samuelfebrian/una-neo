@@ -442,6 +442,30 @@ export const coursesApi = {
         );
     },
 
+    /**
+     * Per-STEP content links from UNA's own authoring grid: `bx_courses_content_data`
+     * rows carry each step's content view URL (bx_videos/bx_classes/bx_polls pages),
+     * the same URLs the pencil maps to UNA's edit-<type> pages.
+     */
+    async stepContentLinks(courseId: number, lessonNodeId: number): Promise<Record<string, string>> {
+        try {
+            const grid = await this.dataManageDisplay(courseId, lessonNodeId);
+            const rows = grid?.data ?? [];
+            const map: Record<string, string> = {};
+            for (const row of rows) {
+                const dataId = String(row?.id?.data ?? row?.id ?? '');
+                if (!dataId) continue;
+                const contentHtml = row?.content_id?.value ?? '';
+                const m = /href="([^"]+)"/.exec(contentHtml);
+                if (m?.[1]) map[dataId] = m[1];
+            }
+            return map;
+        } catch (e) {
+            console.warn('courses api: stepContentLinks failed', e);
+            return {};
+        }
+    },
+
     /** Steps/attachments authoring grid (bx_courses_cnt_data_manage). */
     async dataManageDisplay(courseId: number, lessonNodeId: number): Promise<any | null> {
         try {
