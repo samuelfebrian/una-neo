@@ -11,6 +11,7 @@ import { BlockByData } from 'app/components/block';
 import { Modal } from '../primitives/Modal';
 import OutlineEditor from '../screens/OutlineEditor';
 import LessonEditor from '../screens/LessonEditor';
+import { contentEditPath } from './step-edit-link';
 import { coursesApi } from '../api';
 
 import type { Lesson, NodeId, Outline, OutlineItem, Step } from '../types';
@@ -128,14 +129,35 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             const uriByModule: Record<string, string> = {
                                 bx_videos: 'create-video',
                                 bx_classes: 'create-class',
-                                bx_posts: 'create-post'
+                                bx_posts: 'create-post',
+                                bx_polls: 'create-poll',
+                                bx_files: 'create-file'
                             };
                             const uri = uriByModule[contentType] ?? '';
                             // context_pid must be the course's PROFILE id — UNA resolves
                             // BxDolProfile::getInstance(abs(allow_view_to)) after publish.
+                            // The back flow (route back to the lesson after UNA publish)
+                            // grounds on the stored lesson URL + the step baseline.
+                            sessionStorage.setItem(
+                                'neo_step_back',
+                                JSON.stringify({
+                                    courseId: lesson.courseId,
+                                    nid: lesson.nodeId,
+                                    steps: lesson.steps.length,
+                                    url: `/view-course-profile-node/${slug}?node_id=${lesson.nodeId}`,
+                                    at: Date.now()
+                                })
+                            );
                             window.location.assign(
                                 `/${uri}?context_pid=${courseProfileId || lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
                             );
+                        }}
+                        onEditStep={(step: Step) => {
+                            // UNA's own edit page for the step's content (the same
+                            // edit-video / edit-class / edit-post pages UNA's entry
+                            // menus open), found from the step's content URL.
+                            const editPath = contentEditPath(step.link || step?.video?.src || '');
+                            if (editPath) window.location.assign(editPath);
                         }}
                         onDeleteStep={async (stepId) => {
                             await coursesApi.dataManageDelete(lesson.courseId, lesson.nodeId, stepId);
