@@ -12,7 +12,6 @@ import { Modal } from '../primitives/Modal';
 import OutlineEditor from '../screens/OutlineEditor';
 import LessonEditor from '../screens/LessonEditor';
 import { contentEditPath } from './step-edit-link';
-import { arrivedWithinLandingWindow } from './step-landing';
 import { coursesApi } from '../api';
 
 import type { Lesson, NodeId, Outline, OutlineItem, Step } from '../types';
@@ -59,24 +58,10 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
             if (cancelled) return;
             setIsOwner(l1.isEditable);
             if (contentId) {
-                setOutline(await coursesApi.fullOutline(contentId, s, l1.isEditable));
-            }
-            if (coverProfileId) setCourseProfileId(coverProfileId);
-
-            // UNA's own post-publish redirect lands on this page with the lesson node
-            // as `parent_id`. If a step-add flow is not running (expired/none), open
-            // the lesson editor for that node so the author continues editing it.
-            if (!sessionStorage.getItem('neo_step_back')) {
-                const params = new URLSearchParams(window.location.search);
-                const landedNodeId = Number(params.get('parent_id') ?? 0);
-                if (landedNodeId > 0 && arrivedWithinLandingWindow()) {
-                    const landed = await coursesApi.nodeBlock(contentId, landedNodeId, s);
-                    if (!cancelled && landed) {
-                        setLesson(landed);
-                    }
-                }
-            }
-        })();
+             setOutline(await coursesApi.fullOutline(contentId, s, l1.isEditable));
+             }
+             if (coverProfileId) setCourseProfileId(coverProfileId);
+         })();
         return () => {
             cancelled = true;
         };
@@ -141,6 +126,9 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                         onAddStep={async (usage, contentType, _title) => {
                             // UNA flow: create the content in its module and let UNA's
                             // entry form attach it to this node (context_* params).
+                            // UNA's form response carries the redirect back to this
+                            // lesson node (serviceOnContentAddedRedirect in the courses
+                            // module), so no local bookkeeping is needed.
                             const uriByModule: Record<string, string> = {
                                 bx_videos: 'create-video',
                                 bx_classes: 'create-class',
@@ -151,18 +139,6 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             const uri = uriByModule[contentType] ?? '';
                             // context_pid must be the course's PROFILE id — UNA resolves
                             // BxDolProfile::getInstance(abs(allow_view_to)) after publish.
-                            // The back flow (route back to the lesson after UNA publish)
-                            // grounds on the stored lesson URL + the step baseline.
-                            sessionStorage.setItem(
-                                'neo_step_back',
-                                JSON.stringify({
-                                    courseId: lesson.courseId,
-                                    nid: lesson.nodeId,
-                                    steps: lesson.steps.length,
-                                    url: `/view-course-profile-node/${slug}?node_id=${lesson.nodeId}`,
-                                    at: Date.now()
-                                })
-                            );
                             window.location.assign(
                                 `/${uri}?context_pid=${courseProfileId || lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
                             );
@@ -172,8 +148,8 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             // content link comes from UNA's authoring grid row (the same
                             // URLs UNA's per-row menu shows); view→edit mapping turns
                             // view-video / view-class / view-poll into the edit pages.
-                            // The back flow routes the browser back to the lesson right
-                            // after UNA's own edit publish (mode: 'edit').
+                            // UNA's edit form response carries the redirect back to this
+                            // lesson node, so no local bookkeeping is needed.
                             let contentLink = (step.link || step?.video?.src || '');
                             try {
                                 const links = await coursesApi.stepContentLinks(lesson.courseId, lesson.nodeId);
@@ -181,17 +157,6 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             } catch {
                                 // fallback to the step link below
                             }
-                            sessionStorage.setItem(
-                                'neo_step_back',
-                                JSON.stringify({
-                                    mode: 'edit',
-                                    courseId: lesson.courseId,
-                                    nid: lesson.nodeId,
-                                    steps: lesson.steps.length,
-                                    url: `/view-course-profile-node/${slug}?node_id=${lesson.nodeId}`,
-                                    at: Date.now()
-                                })
-                            );
                             const editPath = contentEditPath(contentLink);
                             if (editPath) window.location.assign(editPath);
                             else setNotice('UNA has no edit page for this content type: ' + (step.contentType || 'unknown') + ' (content link: ' + (contentLink || 'none') + ')');
