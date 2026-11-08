@@ -639,6 +639,21 @@ export const coursesApi = {
         }
     },
 
+    /** UNA's social sharing block (configured share targets render inside). */
+    async socialSharingBlock(entryId: number): Promise<Record<string, unknown> | null> {
+        try {
+            const res = await fetcher(`/api.php?r=bx_courses/entity_social_sharing/&params[]=${entryId}`);
+            // This service answers with a bare HTML string, not a block envelope.
+            const data = res?.data;
+            if (typeof data === 'string' && data.trim())
+                return { id: 0, type: 'html', source: 'bx_courses:entity_social_sharing', content: data };
+            return entityFormBlock(res, 'entity_social_sharing');
+        } catch (e) {
+            console.warn('courses api: socialSharingBlock failed', e);
+            return null;
+        }
+    },
+
     /** Favorites toggle (offline-tolerant). */
     async favorite(courseProfileId: number): Promise<void> {
         try {
@@ -687,11 +702,20 @@ export const coursesApi = {
  * `element:form` registry (submit posts to UNA with the member session).
  */
 export function entityFormBlock(res: any, source: string): Record<string, unknown> | null {
-    const envelope = res?.data;
-    const formEnvelope = Array.isArray(envelope) ? envelope[0] : envelope;
+    let env = res?.data;
+    if (Array.isArray(env)) env = env[0];
+    // UNA serializes some list envelopes as numeric-keyed objects — unwrap the first entry.
+    if (env && !env.type && !env.data) {
+        const firstNumeric = Object.keys(env).find((key) => /^\d+$/.test(key));
+        if (firstNumeric !== undefined) env = env[firstNumeric];
+    }
+    const formEnvelope = env;
     if (!formEnvelope || !formEnvelope.data) return null;
     // 'msg' = UNA refused (Access denied, already deleted, ...) — surface as failure.
     if (formEnvelope.type === 'msg') return null;
+    // Plain HTML payloads (e.g. entity_social_sharing's menu markup) render via the `html` element.
+    if (typeof formEnvelope.data === 'string')
+        return { id: formEnvelope.id ?? 0, type: 'html', source: `bx_courses:${source}`, content: formEnvelope.data };
     return {
         id: formEnvelope.id ?? 0,
         type: formEnvelope.type ?? 'form',
