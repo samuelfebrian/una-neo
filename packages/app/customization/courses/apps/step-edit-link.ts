@@ -6,11 +6,15 @@
 const EDIT_PATH_MAP: Record<string, string> = {
     '/view-video': '/edit-video',
     '/video': '/edit-video',
+    '/view-class': '/edit-class',
     '/class': '/edit-class',
     '/classes': '/edit-class',
+    '/view-post': '/edit-post',
     '/posts': '/edit-post',
     '/post': '/edit-post',
+    '/view-poll': '/edit-poll',
     '/poll': '/edit-poll',
+    '/view-file': '/edit-file',
     '/file': '/edit-file'
 };
 

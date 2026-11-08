@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Lesson, Outline, OutlineItem, Step, Attachment, NodeId, DataId, TranslateFn, IconSlotFn } from '../types';
+import { coursesApi } from '../api';
 import { Breadcrumbs } from '../primitives/Breadcrumbs';
 import { Button } from '../primitives/Button';
 import { ProgressBar } from '../primitives/ProgressBar';
@@ -21,6 +22,7 @@ import { Modal } from '../primitives/Modal';
 import { RenderIcon } from '../primitives/IconSlot';
 import { AgentEntry } from './AgentEntry';
 import { defaultT } from '../tokens/i18n';
+import ElementEntityPoll from 'app/components/elements/entity-poll';
 
 export interface LessonPlayerProps {
   lesson: Lesson;
@@ -36,6 +38,85 @@ export interface LessonPlayerProps {
   t?: TranslateFn;
   iconSlot?: IconSlotFn;
   className?: string;
+}
+
+/**
+ * UNA's own poll as the knowledge check step: the UNA poll element renders the
+ * poll's question and its real options (.una subentries) with UNA's own voting
+ * (result bars + the viewer's chosen option), fetched via UNA's poll page API.
+ */
+function PollStepBody({
+    step,
+    onPollId,
+    iconSlot,
+    t
+}: {
+    step: Step;
+    onPollId?: (id: string | number) => void;
+    iconSlot?: IconSlotFn;
+    t?: TranslateFn;
+}) {
+    const [poll, setPoll] = useState<Record<string, unknown> | null>(null);
+    const [failed, setFailed] = useState(false);
+    const passLink = step.link || '';
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            setPoll(null);
+            setFailed(false);
+            const data = await coursesApi.pollData(passLink);
+            if (cancelled) return;
+            if (data) setPoll(data);
+            else setFailed(true);
+        })();
+        return () => { cancelled = true; };
+    }, [passLink]);
+
+    useEffect(() => {
+        if (poll && typeof (poll as any).id !== 'undefined') onPollId?.((poll as any).id);
+    }, [poll?.id]);
+
+    const pollTitle =
+        typeof poll?.title === 'string'
+            ? poll.title.replace(/<[^>]*>/g, '')
+            : step.title.replace(/<[^>]*>/g, '');
+
+    return (
+        <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-xs font-mono font-bold uppercase tracking-wider">
+                <RenderIcon name="check" className="w-4 h-4" iconSlot={iconSlot} />
+                <span>Knowledge Check Assessment</span>
+            </div>
+            <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
+                {pollTitle || (step.title.replace(/<[^>]*>/g, '') || 'Untitled quiz')}
+            </h4>
+
+            {poll && (
+                <ElementEntityPoll
+                    block={{}}
+                    blockWrapperProps={{}}
+                    data={{
+                        ...poll,
+                        title: pollTitle
+                    }}
+                />
+            )}
+
+            {!poll && !failed && step.textHtml && (
+                <RichText html={step.textHtml} className="text-xs" />
+            )}
+
+            {failed && step.link && (
+                <a
+                    href={step.link}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                    Open the poll page
+                </a>
+            )}
+        </div>
+    );
 }
 
 export function LessonPlayer({
@@ -139,35 +220,7 @@ export function LessonPlayer({
         );
 
       case 'bx_polls':
-        return (
-          <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-xs font-mono font-bold uppercase tracking-wider">
-              <RenderIcon name="check" className="w-4 h-4" iconSlot={iconSlot} />
-              <span>Knowledge Check Assessment</span>
-            </div>
-            <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
-              {step.title}
-            </h4>
-            {step.textHtml && <RichText html={step.textHtml} className="text-xs" />}
-
-            <div className="space-y-2.5 pt-2">
-              {step.options?.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => setPollVotedOption(opt)}
-                  className={`w-full text-left p-3.5 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
-                    pollVotedOption === opt
-                      ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
+        return <PollStepBody step={step} iconSlot={iconSlot} t={t} />;
 
       case 'bx_files':
         return (

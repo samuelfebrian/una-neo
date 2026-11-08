@@ -203,7 +203,7 @@ function normalizeStep(raw: any, index: number, usage: 0 | 1): Step {
         textHtml: raw?.text ?? '',
         image: raw?.image,
         video: raw?.video ? { src: raw.video.src_mp4 || raw.video.src, poster: raw.video.src_poster } : undefined,
-        link: raw?.link,
+        link: raw?.link || raw?.pass_link,
         file: raw?.download_link
             ? { downloadUrl: raw.download_link, name: raw?.title, sizeLabel: raw?.size }
             : undefined,
@@ -637,6 +637,36 @@ export const coursesApi = {
             console.warn('courses api: entityInviteForm failed', e);
             return null;
         }
+    },
+
+    /**
+     * UNA's own poll data (question, options, results, viewer's vote state), pulled
+     * from the poll's own page API. The lesson step carries only the poll's link
+     * (`pass_link`), so resolve the entity_poll element out of that page payload.
+     */
+    async pollData(passLink = ''): Promise<Record<string, unknown> | null> {
+        try {
+            const rel = passLink.replace(/^\/+/, '');
+            if (!rel) return null;
+            const res = await fetcher(
+                `/api.php?r=system/get_page_by_request/TemplServicePages/&params[]=${encodeURIComponent(rel)}`
+            );
+            const d = res?.data;
+            for (const cell of Object.keys(d?.elements ?? {})) {
+                for (const b of d.elements[cell] || []) {
+                    if (b?.source && String(b.source).includes('text_and_subentries')) {
+                        const content = Array.isArray(b?.content) ? b.content : [];
+                        for (const item of content) {
+                            if (item?.type === 'entity_poll' && item?.data)
+                                return item.data as Record<string, unknown>;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('courses api: pollData failed', e);
+        }
+        return null;
     },
 
     /** UNA's social sharing block (configured share targets render inside). */
