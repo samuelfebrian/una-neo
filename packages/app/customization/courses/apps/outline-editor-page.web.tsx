@@ -67,8 +67,8 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
 
             // UNA's own post-publish/edit redirect lands on this page carrying the
             // lesson node in `parent_id` — that landing IS the edit-step state, so
-            // open the lesson editor for it (no time window: the URL's meaning is
-            // unconditional). The "Back to outline" button returns to the list.
+            // the kit sections are removed and the page's own authoring grid below
+            // is the editor.
             const landing = data?.url ? new URLSearchParams(data.url.split('?')[1] ?? '') : null;
             const landingNode = Number(landing?.get('parent_id') ?? 0);
             setLandedOnly(landingNode > 0);
