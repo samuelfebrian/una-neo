@@ -12,6 +12,7 @@
  */
 
 import React, { useState } from 'react';
+import dynamic from 'next/dynamic';
 import type { CourseSummary, TranslateFn, IconSlotFn } from '../types';
 import { CourseCard } from '../units/CourseCard';
 import { CourseList } from '../units/CourseList';
@@ -19,7 +20,15 @@ import { Button } from '../primitives/Button';
 import { Tabs } from '../primitives/Tabs';
 import { RenderIcon } from '../primitives/IconSlot';
 import { defaultT } from '../tokens/i18n';
-import { PathwayCanvas } from '../pathway/PathwayCanvas';
+
+const PathwayCanvas = dynamic(() => import('../pathway/PathwayCanvas').then((m) => m.PathwayCanvas), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full min-h-[720px] flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+    </div>
+  ),
+});
 
 export interface CoursesHubProps {
   featuredCourses: CourseSummary[];

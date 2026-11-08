@@ -3,6 +3,13 @@
 /* Pathway road canvas (customization/courses/pathway): scoped effects + scrollbars,
    fonts and palette inherited from the site. Added 2026-11-08. */
 
+/* Off-screen paint/layout skip: the ~380-node SVG world is skipped while the
+   block is scrolled out of view; intrinsic size keeps scrollbars stable. */
+.pathway-canvas {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
+}
+
 @keyframes pathwayNeonHaloPulse {
   0%, 100% {
     transform: scale(1);
