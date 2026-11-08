@@ -1,2 +1,92 @@
 /* reverted to upstream baseline (empty). Set by agent on 2026-11-06 23:xx per Samuel's order: revert everything except una-src tree itself. */
 
+/* Pathway road canvas (customization/courses/pathway): scoped effects + scrollbars,
+   fonts and palette inherited from the site. Added 2026-11-08. */
+
+@keyframes pathwayCyberTrafficFlow {
+  from {
+    stroke-dashoffset: 400;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pathwayHolographicLaserPulse {
+  0%, 100% {
+    opacity: 0.85;
+    filter: drop-shadow(0 0 6px #60a5fa);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 14px #818cf8);
+  }
+}
+
+@keyframes pathwayNeonHaloPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.45;
+  }
+}
+
+@keyframes pathwayBounceSlow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pathwayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pathway-canvas .cyber-traffic-pulse {
+  animation: pathwayCyberTrafficFlow 3s linear infinite;
+}
+
+.pathway-canvas .laser-beam-pulse {
+  animation: pathwayHolographicLaserPulse 2s ease-in-out infinite;
+}
+
+.pathway-canvas .neon-halo-effect {
+  animation: pathwayNeonHaloPulse 2.5s ease-in-out infinite;
+}
+
+.pathway-canvas .animate-bounce-slow {
+  animation: pathwayBounceSlow 2s ease-in-out infinite;
+}
+
+.pathway-canvas .animate-fade-in {
+  animation: pathwayFadeIn 0.2s ease-out;
+}
+
+.pathway-canvas ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.pathway-canvas ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pathway-canvas ::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.2);
+  border-radius: 9999px;
+}
+
+.pathway-canvas ::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 113, 122, 0.4);
+}
+

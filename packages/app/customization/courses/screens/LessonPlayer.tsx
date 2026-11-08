@@ -436,6 +436,7 @@ export function LessonPlayer({
         <div className="flex items-center justify-center min-w-0 flex-1 px-3">
           {lesson.next?.title && (
             <h5 className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate text-center">
+              <span className="font-semibold text-slate-400 dark:text-slate-500">Next: </span>
               {lesson.next.title}
             </h5>
           )}
