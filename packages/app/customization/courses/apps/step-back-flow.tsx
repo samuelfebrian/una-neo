@@ -32,12 +32,22 @@ function StepBackFlow() {
                     sessionStorage.removeItem(FLOW_KEY);
                     return;
                 }
-                // UNA's csv form redirects to `edit-course-content?...&parent_id=<lesson>`,
-                // so the flow also matches that landing (the UNA `parent_id` on the
-                // redirected page is the lesson node id from `context_nid`).
+                // UNA's form redirects back to the editor page with the lesson node
+                // as `parent_id` — that landing proves the submit. `mode` decides
+                // how: `add` polls UNA until the attach is in (step grows), `edit`
+                // routes straight back to the lesson (no count change).
                 const params = new URLSearchParams(window.location.search);
                 const ctxNid = Number(params.get('context_nid') ?? params.get('parent_id') ?? 0);
                 if (flow.nid !== ctxNid) return;
+                if (flow.mode === 'edit') {
+                    sessionStorage.removeItem(FLOW_KEY);
+                    if (timer.current) {
+                        clearInterval(timer.current);
+                        timer.current = null;
+                    }
+                    window.location.assign(flow.url);
+                    return;
+                }
                 if (timer.current) return;
                 timer.current = setInterval(async () => {
                     tries.current += 1;

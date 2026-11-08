@@ -172,6 +172,8 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             // content link comes from UNA's authoring grid row (the same
                             // URLs UNA's per-row menu shows); view→edit mapping turns
                             // view-video / view-class / view-poll into the edit pages.
+                            // The back flow routes the browser back to the lesson right
+                            // after UNA's own edit publish (mode: 'edit').
                             let contentLink = (step.link || step?.video?.src || '');
                             try {
                                 const links = await coursesApi.stepContentLinks(lesson.courseId, lesson.nodeId);
@@ -179,6 +181,17 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                             } catch {
                                 // fallback to the step link below
                             }
+                            sessionStorage.setItem(
+                                'neo_step_back',
+                                JSON.stringify({
+                                    mode: 'edit',
+                                    courseId: lesson.courseId,
+                                    nid: lesson.nodeId,
+                                    steps: lesson.steps.length,
+                                    url: `/view-course-profile-node/${slug}?node_id=${lesson.nodeId}`,
+                                    at: Date.now()
+                                })
+                            );
                             const editPath = contentEditPath(contentLink);
                             if (editPath) window.location.assign(editPath);
                             else setNotice('UNA has no edit page for this content type: ' + (step.contentType || 'unknown') + ' (content link: ' + (contentLink || 'none') + ')');
