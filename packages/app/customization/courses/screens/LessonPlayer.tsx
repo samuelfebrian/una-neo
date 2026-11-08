@@ -141,6 +141,15 @@ export function LessonPlayer({
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [pollVotedOption, setPollVotedOption] = useState<string | null>(null);
 
+  // The player is reused when switching lessons in place: every new lesson
+  // starts at its own first step (and with no previous vote carried over).
+  const [playedLessonId, setPlayedLessonId] = useState(lesson.nodeId);
+  if (playedLessonId !== lesson.nodeId) {
+    setPlayedLessonId(lesson.nodeId);
+    setActiveStepIndex(0);
+    setPollVotedOption(null);
+  }
+
   const steps = lesson.steps || [];
   const currentStep: Step | undefined = steps[activeStepIndex];
   const isLessonComplete = lesson.progress.status === 'completed';

@@ -19,6 +19,7 @@ export default function LessonApp(props: LessonAppProps) {
     const [lesson, setLesson] = useState<LessonType | null>(null);
     const [outline, setOutline] = useState<{ courseId: number; isEditable: boolean; items: OutlineItem[] } | null>(null);
     const [slug, setSlug] = useState('');
+    const [routeNodeId, setRouteNodeId] = useState<number | null>(null);
     const outlineRef = useRef<{ courseId: number; isEditable: boolean; items: OutlineItem[] } | null>(null);
     /** Client-side navigation: switching lessons fetches only the next page data — no document reload. */
     const router = useRouter();
@@ -130,6 +131,7 @@ export default function LessonApp(props: LessonAppProps) {
                 if (cancelled) return;
                 const built = await buildLesson(nodeId, props.data, courseId, lessonSlug);
                 if (cancelled) return;
+                setRouteNodeId(nodeId);
                 setLesson(attachNav(built, outlineRef.current));
 
                 if (courseId) {
@@ -150,7 +152,7 @@ export default function LessonApp(props: LessonAppProps) {
 
     const onPassStep = (dataId: number) => {
         coursesApi.passData(dataId).then(() => {
-            const nodeId = pageNodeId(props.url);
+            const nodeId = routeNodeId ?? pageNodeId(props.url);
             if (nodeId != null && lesson) {
                 buildLesson(nodeId, props.data, lesson.courseId, slug).then((built) => setLesson(attachNav(built, outlineRef.current)));
             }
@@ -163,15 +165,48 @@ export default function LessonApp(props: LessonAppProps) {
         });
     };
 
-    const onOpenLessonByNav = (nodeId: number, dir?: 'prev' | 'next') => {
+    /** Load one lesson node and show it without touching the route. */
+    const loadLessonNode = useCallback(
+        async (targetNodeId: number): Promise<boolean> => {
+            const courseId = outlineRef.current?.courseId ?? 0;
+            const next = courseId ? await coursesApi.nodeBlock(courseId, targetNodeId, slug) : null;
+            if (!next) return false;
+            setRouteNodeId(targetNodeId);
+            setLesson(attachNav(next, outlineRef.current));
+            return true;
+        },
+        [attachNav, slug]
+    );
+
+    // Browser Back/Forward between lessons: pushState changed the URL without a
+    // route navigation, so the player restores the lesson from `node_id` here.
+    useEffect(() => {
+        const onPopState = () => {
+            const raw = new URL(window.location.href).searchParams.get('node_id');
+            const id = Number(raw ?? 0);
+            if (id > 0) void loadLessonNode(id);
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, [loadLessonNode]);
+
+    /** Switch lessons in place: fetch the lesson and re-render the player, then
+     * update the URL with history.pushState. No route navigation and no document
+     * reload — Next never re-fetches the page shell for a sidebar click. */
+    const onOpenLessonByNav = async (targetNodeId: number, dir?: 'prev' | 'next') => {
         if (!outline) return;
         const lessonItems = outline.items.filter((i) => i.level === 3) || [];
-        const currentIndex = lessonItems.findIndex((i) => i.nodeId === nodeId);
+        const currentIndex = lessonItems.findIndex((i) => i.nodeId === (routeNodeId ?? targetNodeId));
         const target =
             dir === undefined
-                ? lessonItems.find((i) => i.nodeId === nodeId)
+                ? lessonItems.find((i) => i.nodeId === targetNodeId)
                 : lessonItems[dir === 'next' ? Math.min(currentIndex + 1, lessonItems.length - 1) : Math.max(currentIndex - 1, 0)];
-        if (target?.url) router.push(appPath(target.url));
+        if (!target) return;
+        if (await loadLessonNode(target.nodeId)) {
+            if (target.url) window.history.pushState(null, '', appPath(target.url));
+            return;
+        }
+        if (target.url) router.push(appPath(target.url));
     };
 
     if (!lesson) {
