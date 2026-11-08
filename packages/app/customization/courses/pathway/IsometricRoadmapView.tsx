@@ -242,7 +242,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className="relative w-full h-full min-h-[720px] bg-[#09090b] overflow-hidden select-none cursor-grab active:cursor-grabbing flex flex-col flex-1"
+      className="relative w-full h-full min-h-[720px] overflow-hidden select-none cursor-grab active:cursor-grabbing flex flex-col flex-1"
     >
       {/* Background Cybernetic Isometric Grid */}
       <div
