@@ -40,7 +40,6 @@ interface IsometricRoadmapViewProps {
   hasNeonHalo?: boolean;
   onGateCelebration?: (gateDesc: string) => void;
   onOpenStudySquad?: () => void;
-  roadTrafficFlowEnabled?: boolean;
   onPairBuddy?: (colleagueId: string) => void;
 }
 
@@ -71,7 +70,6 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
   hasNeonHalo = true,
   onGateCelebration,
   onOpenStudySquad,
-  roadTrafficFlowEnabled = true,
   onPairBuddy,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -379,11 +377,6 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                 <stop offset="100%" stopColor="#059669" stopOpacity="0.4" />
               </linearGradient>
 
-              {/* Glowing Road Filter */}
-              <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
             </defs>
 
             {/* Central Junction Roads branching out */}
@@ -501,25 +494,8 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                     strokeDasharray="14 10"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    filter="url(#neonGlow)"
                     opacity="0.85"
                   />
-
-                  {/* Roadway Active Cyber Traffic Pulse (Streak & Fuel Driven Flow) */}
-                  {roadTrafficFlowEnabled && (
-                    <path
-                      d={pathD}
-                      fill="none"
-                      stroke={track.colorScheme.primary}
-                      strokeWidth="3.5"
-                      strokeDasharray="25 240"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="cyber-traffic-pulse"
-                      filter="url(#neonGlow)"
-                      opacity="0.95"
-                    />
-                  )}
 
                   {/* Stepped Pedestal Bases along the road for each milestone */}
                   {trackNodes.map((node, i) => {
@@ -552,36 +528,46 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
               );
             })}
 
-            {/* Holographic Laser Connection Beam for Study Squad (Co-Op Shared Velocity Boost) */}
-            {squadPeerInfo && (
-              <g className="laser-beam-pulse">
-                {/* Outer Glow Halo Line */}
-                <line
-                  x1={squadPeerInfo.userPos.x}
-                  y1={squadPeerInfo.userPos.y}
-                  x2={squadPeerInfo.peerPos.x}
-                  y2={squadPeerInfo.peerPos.y}
-                  stroke="#60a5fa"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  opacity="0.35"
-                  filter="url(#neonGlow)"
-                />
-                {/* Core Laser Beam */}
-                <line
-                  x1={squadPeerInfo.userPos.x}
-                  y1={squadPeerInfo.userPos.y}
-                  x2={squadPeerInfo.peerPos.x}
-                  y2={squadPeerInfo.peerPos.y}
-                  stroke="#c084fc"
-                  strokeWidth="2.5"
-                  strokeDasharray="8 6"
-                  strokeLinecap="round"
-                  className="cyber-traffic-pulse"
-                />
-              </g>
-            )}
-          </svg>
+                  {/* Routing Laser Connection Beam for Study Squad (Co-Op Shared Velocity Boost) */}
+                  {/* Performance: static composite glow (layered strokes, no SVG blur filter, no CSS animation) */}
+                  {squadPeerInfo && (
+                    <g>
+                      {/* Static fake glow: wide low-opacity halo instead of feGaussianBlur */}
+                      <line
+                        x1={squadPeerInfo.userPos.x}
+                        y1={squadPeerInfo.userPos.y}
+                        x2={squadPeerInfo.peerPos.x}
+                        y2={squadPeerInfo.peerPos.y}
+                        stroke="#60a5fa"
+                        strokeWidth="10"
+                        strokeLinecap="round"
+                        opacity="0.08"
+                      />
+                      {/* Outer halo line */}
+                      <line
+                        x1={squadPeerInfo.userPos.x}
+                        y1={squadPeerInfo.userPos.y}
+                        x2={squadPeerInfo.peerPos.x}
+                        y2={squadPeerInfo.peerPos.y}
+                        stroke="#60a5fa"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        opacity="0.35"
+                      />
+                      {/* Core beam */}
+                      <line
+                        x1={squadPeerInfo.userPos.x}
+                        y1={squadPeerInfo.userPos.y}
+                        x2={squadPeerInfo.peerPos.x}
+                        y2={squadPeerInfo.peerPos.y}
+                        stroke="#c084fc"
+                        strokeWidth="2.5"
+                        strokeDasharray="8 6"
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  )}
+                </svg>
 
           {/* ================= HTML HOLOGRAPHIC BILLBOARDS & AVATARS ================= */}
           {/* Study Squad Holographic Badge on Road between Avatars */}

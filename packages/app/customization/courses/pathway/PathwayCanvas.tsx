@@ -154,7 +154,6 @@ export function PathwayCanvas() {
         onGateCelebration={() => {
           fetchSegments(false, 0);
         }}
-        roadTrafficFlowEnabled={true}
       />
 
       <NodeDetailSheet
