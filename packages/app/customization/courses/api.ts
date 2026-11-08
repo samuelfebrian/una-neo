@@ -693,22 +693,6 @@ export const coursesApi = {
         return null;
     },
 
-    /**
-     * UNA's canonical course-content edit URL (`edit-course-content/<slug>-<page>`,
-     * the page UNA's own redirect after Add Step / Edit Step lands on). The kit's
-     * old `/edit-course-content/<plain-slug>` route renders no UNA blocks — the
-     * canonical URL is the only working authoring page.
-     */
-    async courseEditUrl(contentId: number): Promise<string> {
-        try {
-            const res = await fetcher(`/api.php?r=bx_courses/get_course_edit_url/&params[]=${contentId}`);
-            return typeof res?.data === 'string' ? res.data : '';
-        } catch (e) {
-            console.warn('courses api: courseEditUrl failed', e);
-            return '';
-        }
-    },
-
     /** UNA's social sharing block (configured share targets render inside). */
     async socialSharingBlock(entryId: number): Promise<Record<string, unknown> | null> {
         try {
