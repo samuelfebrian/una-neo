@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BlockByData } from 'app/components/block';
+import { Modal } from '../primitives/Modal';
 import OutlineEditor from '../screens/OutlineEditor';
 import LessonEditor from '../screens/LessonEditor';
 import { coursesApi } from '../api';
@@ -32,6 +33,8 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
     const [blockList, setBlockList] = useState<Block[]>([]);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState('');
+    const [addNodeBlock, setAddNodeBlock] = useState<Block | null>(null);
+    const [addNodeTitle, setAddNodeTitle] = useState('');
 
     const refreshOutline = useCallback(async (courseId: number) => {
         setOutline(await coursesApi.fullOutline(courseId, slug, true));
@@ -116,18 +119,20 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                     </div>
                     <LessonEditor
                         lesson={lesson}
-                        onAddStep={async (usage, _contentType, title) => {
-                            // UNA flow: the step form is UNA's add modal on the data grid.
-                            setBusy(true);
-                            try {
-                                const grid = await coursesApi.dataManageDisplay(lesson.courseId, lesson.nodeId);
-                                const denied =
-                                    (grid as any)?.msg?.includes?.('Access denied') ?? false;
-                                if (denied) setNotice('Access denied - check your author rights for this course.');
-                                else console.warn('UNA add step form payload (wire to form UI next milestone):', grid, usage, title);
-                            } finally {
-                                setBusy(false);
-                            }
+                        onAddStep={async (usage, contentType, _title) => {
+                            // UNA flow: create the content in its module and let UNA's
+                            // entry form attach it to this node (context_* params).
+                            const uriByModule: Record<string, string> = {
+                                bx_videos: 'create-video',
+                                bx_classes: 'create-class',
+                                bx_posts: 'create-post',
+                                bx_polls: 'create-poll',
+                                bx_files: 'create-file'
+                            };
+                            const uri = uriByModule[contentType] ?? '';
+                            window.location.assign(
+                                `/${uri}?context_pid=${lesson.courseId}&context_nid=${lesson.nodeId}&context_usage=${usage}`
+                            );
                         }}
                         onDeleteStep={async (stepId) => {
                             await coursesApi.dataManageDelete(lesson.courseId, lesson.nodeId, stepId);
@@ -143,16 +148,17 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                 <OutlineEditor
                     outline={outline}
                     onAddNode={async (parentNodeId, kind, title) => {
-                        // UNA authoring: open the grid add form (context: parent)
+                        // UNA authoring: show UNA's own add form for this parent.
                         setBusy(true);
                         try {
                             const formPayload = await coursesApi.structureAdd(outline.courseId, parentNodeId);
-                            const denied =
-                                typeof formPayload === 'string'
-                                    ? formPayload.includes('Access denied')
-                                    : formPayload?.msg?.includes?.('Access denied') ?? false;
-                            if (denied) setNotice('Access denied - check your author rights for this course.');
-                            else console.warn('UNA add-node form payload (wire to form UI next milestone):', formPayload, kind, title);
+                            const d = Array.isArray(formPayload) ? formPayload[0] : formPayload;
+                            if (d?.type === 'form') {
+                                setAddNodeBlock({ id: d.id, type: d.type, content: d.data });
+                                setAddNodeTitle(title || '');
+                            } else if (typeof d === 'string' && d.includes('Access denied')) {
+                                setNotice('Access denied - check your author rights for this course.');
+                            }
                         } finally {
                             setBusy(false);
                         }
@@ -200,6 +206,20 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                     Showing the full outline. Editing unlocks once you have author rights for this course.
                 </div>
             )}
+
+            {/* UNA's own "add module/theme/lesson" form, refreshed on close */}
+            <Modal
+                isOpen={addNodeBlock !== null}
+                onClose={() => {
+                    setAddNodeBlock(null);
+                    refreshOutline(outline.courseId);
+                }}
+                title={`Add to outline${addNodeTitle ? ` — ${addNodeTitle}` : ''}`}
+                description="UNA's add form: submit here and the node joins the course."
+                size="lg"
+            >
+                {addNodeBlock && <BlockByData data={addNodeBlock} contentOnly={false} />}
+            </Modal>
 
             {/* UNA page blocks (manage tools etc.) remain embedded for full feature parity */}
             {blockList.filter((b) => !String(b?.source ?? '').includes('structure')).length > 0 && (
