@@ -552,7 +552,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                         stroke="#60a5fa"
                         strokeWidth="4"
                         strokeLinecap="round"
-                        opacity="0.35"
+                        opacity="0.5"
                       />
                       {/* Core beam */}
                       <line
@@ -569,27 +569,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                   )}
                 </svg>
 
-          {/* ================= HTML HOLOGRAPHIC BILLBOARDS & AVATARS ================= */}
-          {/* Study Squad Holographic Badge on Road between Avatars */}
-          {squadPeerInfo && (
-            <div
-              className="absolute z-35 pointer-events-auto transition-transform -translate-x-1/2 -translate-y-1/2"
-              style={{
-                left: `${squadPeerInfo.midpoint.x}px`,
-                top: `${squadPeerInfo.midpoint.y - 15}px`,
-              }}
-            >
-              <button
-                type="button"
-                onClick={onOpenStudySquad}
-                className="flex items-center gap-1.5 px-3 py-1 bg-zinc-950/90 border border-blue-400/80 rounded-full shadow-[0_0_20px_rgba(56,189,248,0.6)] backdrop-blur-md text-[10px] text-blue-200 font-bold whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-all"
-                title={`Study Squad with ${squadPeerInfo.peer.name}! Click to open Study Squad & Raid Hub`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-blue-300" />
-                <span>Study Squad · +15% XP Synergy</span>
-              </button>
-            </div>
-          )}
+          {/* Study Squad connection: the static laser beam (SVG above) connects user & peer */}
 
           {/* Each card stands upright on its pedestal with minimal text: TITLE ONLY */}
           {nodes.map((node) => {
