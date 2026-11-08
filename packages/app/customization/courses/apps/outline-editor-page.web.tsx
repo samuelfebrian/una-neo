@@ -61,6 +61,22 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
              setOutline(await coursesApi.fullOutline(contentId, s, l1.isEditable));
              }
              if (coverProfileId) setCourseProfileId(coverProfileId);
+
+            // UNA's own post-publish/edit redirect lands on this page carrying the
+            // lesson node in `parent_id` — that landing IS the edit-step state, so
+            // open the lesson editor for it (no time window: the URL's meaning is
+            // unconditional). The "Back to outline" button returns to the list.
+            const landing = data?.url ? new URLSearchParams(data.url.split('?')[1] ?? '') : null;
+            const landingNode = Number(landing?.get('parent_id') ?? 0);
+            if (landingNode > 0 && contentId) {
+                const landingItem = (await coursesApi.fullOutline(contentId, s, l1.isEditable)).items.find((i) => i.nodeId === landingNode);
+                if (!cancelled && landingItem?.level === 3) {
+                    const landed = await coursesApi.nodeBlock(contentId, landingNode, s);
+                    if (!cancelled && landed) {
+                        setLesson(landed);
+                    }
+                }
+            }
          })();
         return () => {
             cancelled = true;
