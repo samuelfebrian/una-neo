@@ -392,7 +392,7 @@ export function LessonPlayer({
                         {STEP_TYPE_LABELS[currentStep.contentType] || currentStep.typeLabel || 'Lesson'}
                       </span>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-display">
-                        {currentStep.title}
+                        {(currentStep.title || '').replace(/<[^>]*>/g, '') || currentStep.title}
                       </h3>
                     </div>
 

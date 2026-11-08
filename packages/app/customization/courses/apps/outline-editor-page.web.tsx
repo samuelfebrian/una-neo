@@ -12,6 +12,7 @@ import { Modal } from '../primitives/Modal';
 import OutlineEditor from '../screens/OutlineEditor';
 import LessonEditor from '../screens/LessonEditor';
 import { contentEditPath } from './step-edit-link';
+import { arrivedWithinLandingWindow } from './step-landing';
 import { coursesApi } from '../api';
 
 import type { Lesson, NodeId, Outline, OutlineItem, Step } from '../types';
@@ -61,6 +62,20 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                 setOutline(await coursesApi.fullOutline(contentId, s, l1.isEditable));
             }
             if (coverProfileId) setCourseProfileId(coverProfileId);
+
+            // UNA's own post-publish redirect lands on this page with the lesson node
+            // as `parent_id`. If a step-add flow is not running (expired/none), open
+            // the lesson editor for that node so the author continues editing it.
+            if (!sessionStorage.getItem('neo_step_back')) {
+                const params = new URLSearchParams(window.location.search);
+                const landedNodeId = Number(params.get('parent_id') ?? 0);
+                if (landedNodeId > 0 && arrivedWithinLandingWindow()) {
+                    const landed = await coursesApi.nodeBlock(contentId, landedNodeId, s);
+                    if (!cancelled && landed) {
+                        setLesson(landed);
+                    }
+                }
+            }
         })();
         return () => {
             cancelled = true;

@@ -32,7 +32,12 @@ function StepBackFlow() {
                     sessionStorage.removeItem(FLOW_KEY);
                     return;
                 }
-                if (flow.nid !== Number(new URLSearchParams(window.location.search).get('context_nid'))) return;
+                // UNA's csv form redirects to `edit-course-content?...&parent_id=<lesson>`,
+                // so the flow also matches that landing (the UNA `parent_id` on the
+                // redirected page is the lesson node id from `context_nid`).
+                const params = new URLSearchParams(window.location.search);
+                const ctxNid = Number(params.get('context_nid') ?? params.get('parent_id') ?? 0);
+                if (flow.nid !== ctxNid) return;
                 if (timer.current) return;
                 timer.current = setInterval(async () => {
                     tries.current += 1;
