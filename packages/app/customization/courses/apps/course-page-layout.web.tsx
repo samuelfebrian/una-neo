@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Page from 'app/ui/molecules/page/page';
 import PageFooter from 'app/components/nav/menu-footer';
 import { BlockByData } from 'app/components/block';
+import { Modal } from '../primitives/Modal';
 import CoursesHub from '../screens/CoursesHub';
 import BrowseCourses from '../screens/BrowseCourses';
 import CoursePage from '../screens/CoursePage';
@@ -76,6 +77,44 @@ function UnaBlocks({ blocks, contentOnly = true }: { blocks: Block[]; contentOnl
 
 function Frame({ children, onNavigate }: { children: React.ReactNode; onNavigate?: () => void }) {
     return <div className="w-full">{children}</div>;
+}
+
+/**
+ * UNA's own entry forms (edit/settings, delete) rendered in a kit modal:
+ * submit/confirm actions post to UNA under the member session, so every
+ * server-side check, redirect and cascade stays 100% UNA.
+ */
+function UnaEntryFormModal({
+    state,
+    blocks,
+    onClose
+}: {
+    state: { title: string; description?: string } | null;
+    /** null = fetching, [] = nothing returned, [...] = UNA form blocks */
+    blocks: Block[] | null;
+    onClose: () => void;
+}) {
+    return (
+        <Modal
+            isOpen={Boolean(state)}
+            onClose={onClose}
+            title={state?.title}
+            description={state?.description}
+            size="lg"
+        >
+            {blocks === null && (
+                <div className="flex items-center justify-center py-10">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                </div>
+            )}
+            {blocks !== null && blocks.length === 0 && (
+                <p className="py-6 text-center text-xs text-slate-500">
+                    Nothing to show here — this action needs a signed-in account with the right role.
+                </p>
+            )}
+            {blocks !== null && blocks.length > 0 && <UnaBlocks blocks={blocks} contentOnly={false} />}
+        </Modal>
+    );
 }
 
 /** Panel with a designed header, holding UNA-owned feature blocks. */
@@ -296,6 +335,23 @@ function MyCoursesApp({ data }: { data: any }) {
 function AdminApp({ data }: { data: any }) {
     const [created, setCreated] = useState<CourseSummary[]>([]);
     const [loading, setLoading] = useState(true);
+    const [unaFormState, setUnaFormState] = useState<{ title: string; description?: string } | null>(null);
+    const [unaFormBlocks, setUnaFormBlocks] = useState<Block[] | null>(null);
+
+    /** Fetch and show UNA's own edit/settings or delete form for an owned course. */
+    const openEntryForm = async (kind: 'edit' | 'delete', entryId: number, title: string) => {
+        setUnaFormState({
+            title: kind === 'delete' ? `Delete "${title}"` : `Settings — ${title}`,
+            description: kind === 'delete' ? 'UNA confirms and applies the deletion with its own cascade rules.' : undefined
+        });
+        setUnaFormBlocks(null);
+        const block =
+            kind === 'delete'
+                ? await coursesApi.entityDeleteForm(entryId)
+                : await coursesApi.entityEditForm(entryId);
+        setUnaFormBlocks(block ? [block] : []);
+        if (!block) setUnaFormState(null);
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -325,8 +381,12 @@ function AdminApp({ data }: { data: any }) {
                         onCourseAction={(action, courseId) => {
                             const course = created.find((c) => c.id === courseId);
                             if (!course) return;
-                            if (action === 'edit' || action === 'manage') {
+                            if (action === 'audit_content' || action === 'edit' || action === 'manage') {
                                 window.location.assign(`/edit-course-content/${course.slug}`);
+                            } else if (action === 'settings') {
+                                openEntryForm('edit', course.id, course.title);
+                            } else if (action === 'delete') {
+                                openEntryForm('delete', course.id, course.title);
                             } else if (action === 'add' || action === 'create') {
                                 window.location.assign('/create-course-profile');
                             }
@@ -343,6 +403,15 @@ function AdminApp({ data }: { data: any }) {
                         <UnaBlocks blocks={blocks} />
                     </KitPanel>
                 </div>
+                <UnaEntryFormModal
+                    state={unaFormState}
+                    blocks={unaFormBlocks}
+                    onClose={() => {
+                        setUnaFormState(null);
+                        // A finished UNA delete changes the ownership list — reload it.
+                        if (unaFormState && unaFormState.title.startsWith('Delete')) window.location.reload();
+                    }}
+                />
             </div>
         </Frame>
     );
@@ -448,6 +517,28 @@ function CourseViewPage({ data }: { data: any }) {
     const [commentsBlock, setCommentsBlock] = useState<Block | null>(null);
     const [slug, setSlug] = useState('');
     const [isEditable, setEditable] = useState(false);
+    const [unaFormState, setUnaFormState] = useState<{ title: string; description?: string } | null>(null);
+    const [unaFormBlocks, setUnaFormBlocks] = useState<Block[] | null>(null);
+
+    /** Fetch and show UNA's own edit/settings or delete form for this course. */
+    const openEntryForm = async (kind: 'edit' | 'delete') => {
+        if (!course) return;
+        setUnaFormState({
+            title: kind === 'delete' ? `Delete "${course.title}"` : `Settings — ${course.title}`,
+            description: kind === 'delete' ? 'UNA confirms and applies the deletion with its own cascade rules.' : undefined
+        });
+        setUnaFormBlocks(null);
+        const block =
+            kind === 'delete'
+                ? await coursesApi.entityDeleteForm(course.id)
+                : await coursesApi.entityEditForm(course.id);
+        setUnaFormBlocks(block ? [block] : []);
+        if (!block) {
+            // Form refused (no rights / already gone): fall back to the UNA entry page.
+            setUnaFormState(null);
+            if (course.url) window.location.assign(course.url);
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -582,6 +673,23 @@ function CourseViewPage({ data }: { data: any }) {
                 attachmentsLoading={attachments === null}
                 onTabChange={onTabChange}
                 onOpenLesson={onOpenLesson}
+                onManageNavigate={(section) => {
+                    if (section === 'content') {
+                        window.location.assign(`/edit-course-content/${course.slug}`);
+                    } else if (section === 'students') {
+                        const profileId = infoProfileId(course, data);
+                        if (profileId) window.location.assign(`/course-fans?profile_id=${profileId}`);
+                    } else if (section === 'settings') {
+                        openEntryForm('edit');
+                    } else if (section === 'pricing') {
+                        // UNA's own pricing/join page carries the enrollment plans
+                        const slugForJoin = course.slug || infoSlugFromData(data);
+                        if (slugForJoin) window.location.assign(`/join-course-profile/${slugForJoin}`);
+                    }
+                }}
+                onDeleteCourse={() => {
+                    openEntryForm('delete');
+                }}
                 onJoinFree={async () => {
                     // UNA's join flow keeps its own page (join course -> confirm/pricing);
                     // the takeover renders it too (`join-course-profile` in COURSE_URIS).
@@ -604,6 +712,14 @@ function CourseViewPage({ data }: { data: any }) {
                         <UnaBlocks blocks={[...(commentsBlock ? [commentsBlock] : []), ...discussionBlocks]} />
                     ) : undefined
                 }
+            />
+            <UnaEntryFormModal
+                state={unaFormState}
+                blocks={unaFormBlocks}
+                onClose={() => {
+                    setUnaFormState(null);
+                    if (unaFormState && unaFormState.title.startsWith('Delete')) window.location.reload();
+                }}
             />
         </div>
     );

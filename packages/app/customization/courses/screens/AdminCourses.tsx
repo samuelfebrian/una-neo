@@ -66,19 +66,14 @@ export function AdminCourses({
         actions: {
           type: 'actions',
           actions: [
-            { name: 'audit_content', title: 'Audit Content', kind: 'callback' },
+            { name: 'audit_content', title: 'Edit Content', kind: 'callback' },
             { name: 'settings', title: 'Settings', kind: 'callback' },
             { name: 'delete', title: 'Delete', kind: 'callback', confirm: true }
           ]
         }
       }
     })),
-    actions: {
-      bulk: [
-        { name: 'clear_reports', title: t('admin.bulk.clear_reports'), kind: 'callback' },
-        { name: 'bulk_delete', title: t('admin.bulk.delete'), kind: 'callback', confirm: true }
-      ]
-    }
+    actions: {}
   };
 
   return (

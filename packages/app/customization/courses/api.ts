@@ -605,6 +605,29 @@ export const coursesApi = {
         }
     },
 
+    /** UNA's entry edit form block (title/desc/categories/visibility) — the real Course Settings. */
+    async entityEditForm(entryId: number, display?: string): Promise<Record<string, unknown> | null> {
+        try {
+            const extra = display ? `&params[]=${display}` : '';
+            const res = await fetcher(`/api.php?r=bx_courses/entity_edit/&params[]=${entryId}${extra}`);
+            return entityFormBlock(res, 'entity_edit');
+        } catch (e) {
+            console.warn('courses api: entityEditForm failed', e);
+            return null;
+        }
+    },
+
+    /** UNA's entry delete form block (UNA-side confirm + cascade rules). */
+    async entityDeleteForm(entryId: number): Promise<Record<string, unknown> | null> {
+        try {
+            const res = await fetcher(`/api.php?r=bx_courses/entity_delete/&params[]=${entryId}`);
+            return entityFormBlock(res, 'entity_delete');
+        } catch (e) {
+            console.warn('courses api: entityDeleteForm failed', e);
+            return null;
+        }
+    },
+
     /** Favorites toggle (offline-tolerant). */
     async favorite(courseProfileId: number): Promise<void> {
         try {
@@ -646,6 +669,28 @@ export const coursesApi = {
      * grid (/course-fans) instead of bypassing those checks.
      */
 };
+
+/**
+ * Unwrap a UNA API form block response (`entity_edit`, `entity_delete`, ...)
+ * into the `{id, type, content}` dict BlockByData renders through the
+ * `element:form` registry (submit posts to UNA with the member session).
+ */
+export function entityFormBlock(res: any, source: string): Record<string, unknown> | null {
+    const envelope = res?.data;
+    const formEnvelope = Array.isArray(envelope) ? envelope[0] : envelope;
+    if (!formEnvelope || !formEnvelope.data) return null;
+    // 'msg' = UNA refused (Access denied, already deleted, ...) — surface as failure.
+    if (formEnvelope.type === 'msg') return null;
+    return {
+        id: formEnvelope.id ?? 0,
+        type: formEnvelope.type ?? 'form',
+        source: `bx_courses:${source}`,
+        name: formEnvelope.name,
+        form_type: formEnvelope.form_type,
+        request: formEnvelope.request,
+        content: formEnvelope.data
+    };
+}
 
 /** Map a UNA browse/search item to the kit CourseSummary. */
 export function summaryFromBrowseItem(raw: any): CourseSummary {

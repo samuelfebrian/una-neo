@@ -68,6 +68,8 @@ export interface CoursePageProps {
   onPublishCourse?: (course: Course) => void;
   onUnpublishCourse?: (course: Course) => void;
   onDeleteCourse?: (course: Course, withContent: boolean) => void;
+  /** Manage tab assets: content/settings/pricing/students routing, wired by the layout. */
+  onManageNavigate?: (section: 'settings' | 'content' | 'pricing' | 'students' | 'invite') => void;
   onAddModuleOrLesson?: (parentNodeId: NodeId, kind: 'module' | 'theme' | 'lesson') => void;
   onAskAgent?: (ctx: { course: Pick<Course, 'id' | 'profileId'>; nodeId?: NodeId; hint?: string; prompt?: string }) => void;
   /** Optional embedded UNA blocks surfaced inside the About tab (no UNA feature removed). */
@@ -106,6 +108,7 @@ export function CoursePage({
   onPublishCourse,
   onUnpublishCourse,
   onDeleteCourse,
+  onManageNavigate,
   onAddModuleOrLesson,
   onAskAgent,
   aboutSlot,
@@ -688,6 +691,7 @@ export function CoursePage({
             <ManagePanel
               course={course}
               outline={outline}
+              onNavigateSub={onManageNavigate}
               onPublishCourse={onPublishCourse}
               onUnpublishCourse={onUnpublishCourse}
               onDeleteCourse={onDeleteCourse}
