@@ -38,6 +38,9 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
     const [addNodeTitle, setAddNodeTitle] = useState('');
     /** The course's PROFILE id (context_pid for UNA step creation — NOT the content id). */
     const [courseProfileId, setCourseProfileId] = useState(0);
+    /** UNA's own redirect lands here with the lesson node — the page then shows
+     * only UNA's own authoring grid (kit sections off; the grid is the editor). */
+    const [landedOnly, setLandedOnly] = useState(false);
 
     const refreshOutline = useCallback(async (courseId: number) => {
         setOutline(await coursesApi.fullOutline(courseId, slug, true));
@@ -68,15 +71,7 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
             // unconditional). The "Back to outline" button returns to the list.
             const landing = data?.url ? new URLSearchParams(data.url.split('?')[1] ?? '') : null;
             const landingNode = Number(landing?.get('parent_id') ?? 0);
-            if (landingNode > 0 && contentId) {
-                const landingItem = (await coursesApi.fullOutline(contentId, s, l1.isEditable)).items.find((i) => i.nodeId === landingNode);
-                if (!cancelled && landingItem?.level === 3) {
-                    const landed = await coursesApi.nodeBlock(contentId, landingNode, s);
-                    if (!cancelled && landed) {
-                        setLesson(landed);
-                    }
-                }
-            }
+            setLandedOnly(landingNode > 0);
          })();
         return () => {
             cancelled = true;
@@ -123,7 +118,7 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                 </div>
             )}
 
-            {lesson ? (
+            {lesson && !landedOnly ? (
                 <>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60">
                         <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -187,6 +182,10 @@ export default function OutlineEditorPageApp({ data }: { data: any }) {
                         }}
                     />
                 </>
+            ) : landedOnly ? (
+                /* UNA's own redirect landing: the page's own authoring grid
+                   (rendered below from the page blocks) is the editor. */
+                null
             ) : (
                 <OutlineEditor
                     outline={outline}
