@@ -26,6 +26,13 @@ type UnaPageMeta = {
     og_type?: string;
 };
 
+/** Studio site icons, as serviceGetMetaIcons returns them (empty strings when unset). */
+type UnaMetaIcons = {
+    favicon?: string;
+    favicon_svg?: string;
+    apple?: string;
+};
+
 /** The fields of UNA's page payload read here; the rest goes to Root as it came. */
 type UnaPage = {
     title?: string;
@@ -69,8 +76,30 @@ async function loadPage(props: PageProps): Promise<UnaPageResponse> {
     return getData((params.path ?? []).join('/'), JSON.stringify(searchParams));
 }
 
-// Multi-tenant mode and CI preview hosts: the Host header picks the UNA backend.
+/** Multi-tenant mode and CI preview hosts: the Host header picks the UNA backend. */
 const hostPicksBackend = (): boolean => !!MULTITENANT || !!PREVIEW_DOMAIN;
+
+/**
+ * Studio's site icons (Designer → Icon), so the head follows UNA instead of
+ * this build's static files. Session-independent: the Authorization header
+ * alone answers, as both the requestable options are site-wide.
+ */
+const getUnaMetaIcons = cache(async (): Promise<UnaMetaIcons> => {
+    const hdrs = await headers();
+    const tenant = await requestTenant();
+    const base = (tenant?.unaUrl ?? UNA_URL).replace(/\/+$/, '');
+    try {
+        const res = await fetch(`${base}/api.php?r=bx_artificer/get_meta_icons/`, {
+            headers: { authorization: 'Bearer ' + (tenant?.unaApiKey ?? UNA_API_KEY) },
+            cache: 'no-store',
+        });
+        if (!res.ok) return {};
+        const j = (await res.json().catch(() => null)) as { data?: UnaMetaIcons } | null;
+        return j?.data ?? {};
+    } catch {
+        return {};
+    }
+});;
 
 /**
  * This request's UNA backend, resolved from the Host header as proxy.js does (lib/tenant.ts).
@@ -307,6 +336,8 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
         : 'summary';
     const isClientProject = UNA_URL != 'https://api.neo.so';
     const iconPng = isClientProject ? '/static/logo192.png' : '/logo192.png';
+    // Studio's icons win, this build's static files stay as fallbacks.
+    const metaIcons = await getUnaMetaIcons();
 
     const appleAppId = appSetting('smart_app_banner', 'apple_app_id');
     const appleAppArgument = appSetting('smart_app_banner', 'apple_app_argument');
@@ -325,15 +356,16 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
         ...(description && { description }),
         ...(isNoIndex && { robots: { index: false } }),
         alternates: { canonical: url },
-        manifest: isClientProject ? '/static/manifest.json' : '/manifest.json',
+        manifest: '/manifest.json',
         icons: {
-            // PNG for link previews and clients without SVG icons; the SVG last, for
-            // browsers that take the last icon they can use.
             icon: [
+                // PNG for link previews and clients without SVG icons; the SVG last, for
+                // browsers that take the last icon they can use.
+                ...(metaIcons.favicon ? [{ url: metaIcons.favicon, type: metaIcons.favicon.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon', sizes: 'any' } as const] : []),
                 { url: iconPng, type: 'image/png', sizes: '192x192' },
-                { url: isClientProject ? '/static/favicon.svg' : '/favicon.svg', type: 'image/svg+xml' },
+                { url: metaIcons.favicon_svg || (isClientProject ? '/static/favicon.svg' : '/favicon.svg'), type: 'image/svg+xml' },
             ],
-            apple: iconPng,
+            apple: metaIcons.apple || iconPng,
         },
         other,
         openGraph: {
