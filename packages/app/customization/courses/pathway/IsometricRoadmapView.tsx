@@ -92,66 +92,42 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
     tNodes.sort((a, b) => a.segmentIndex - b.segmentIndex);
   });
 
-  const nodeTrackIndexMap = new Map<string, number>();
-  trackNodesMap.forEach((tNodes) => {
-    tNodes.forEach((n, idx) => {
-      nodeTrackIndexMap.set(n.id, idx);
-    });
-  });
+  // Map tracks to distinct road paths with consistent uniform spacing regardless of category filter.
+  // Roads are AUTO-GENERATED from the real node set: lanes come from the active tracks
+  // (position in the list; the max-3 rule keeps three), and every card is placed by its
+  // ordinal along its lane with a gentle isometric wave. No hardcoded track ids or
+  // point arrays — the same code draws 1 track or N, short or long.
+  const getTrackIdx = (trackId: string): number =>
+    tracks.findIndex((t) => t.id === trackId);
 
-  // Map tracks to distinct road paths with consistent uniform spacing regardless of category filter
+  const LANE_STEP = 160;
+  const LANE_GAP = 120;
+  const FIRST_LANE_Y = -80;
+
+  const laneYFor = (trackIdx: number): number => {
+    if (tracks.length <= 1) return 40; // single lane rides the middle branch
+    return FIRST_LANE_Y + trackIdx * LANE_GAP;
+  };
+
   const getNodePosition = (node: PathNode, indexInTrack: number): NodePosition => {
     const track = tracks.find((t) => t.id === node.trackId);
     const color = track?.colorScheme.primary || '#60a5fa';
-    const idx = indexInTrack;
-
-    if (node.trackId === 'data-analytics') {
-      // Top Road branch (Cyan) - evenly spaced consecutive points along the highway
-      const points = [
-        { x: 180, y: -80 },
-        { x: 340, y: -160 },
-        { x: 500, y: -240 },
-        { x: 680, y: -240 },
-        { x: 840, y: -180 },
-        { x: 1000, y: -120 },
-        { x: 1160, y: -60 },
-        { x: 1320, y: 0 },
-        { x: 1480, y: 60 },
-      ];
-      const p = points[idx] || { x: 180 + idx * 160, y: -80 + (idx > 3 ? (idx - 3) * 50 : -idx * 60) };
-      return { x: p.x, y: p.y, trackColor: color };
-    } else if (node.trackId === 'ux-ui-design') {
-      // Middle Road branch (Purple)
-      const points = [
-        { x: 140, y: 40 },
-        { x: 300, y: 80 },
-        { x: 460, y: 40 },
-        { x: 640, y: 0 },
-        { x: 800, y: -40 },
-        { x: 960, y: -20 },
-        { x: 1120, y: 20 },
-        { x: 1280, y: 80 },
-        { x: 1440, y: 140 },
-      ];
-      const p = points[idx] || { x: 140 + idx * 160, y: 40 + idx * 15 };
-      return { x: p.x, y: p.y, trackColor: color };
-    } else {
-      // Bottom Road branch (Emerald)
-      const points = [
-        { x: 120, y: 160 },
-        { x: 280, y: 220 },
-        { x: 440, y: 280 },
-        { x: 620, y: 240 },
-        { x: 780, y: 180 },
-        { x: 940, y: 140 },
-        { x: 1100, y: 120 },
-        { x: 1260, y: 160 },
-        { x: 1420, y: 220 },
-      ];
-      const p = points[idx] || { x: 120 + idx * 160, y: 160 + idx * 15 };
-      return { x: p.x, y: p.y, trackColor: color };
-    }
+    const idx = Math.max(0, indexInTrack);
+    return {
+      x: 180 + idx * LANE_STEP,
+      y: laneYFor(getTrackIdx(node.trackId)) + Math.round(30 * Math.sin((idx * Math.PI) / 3)),
+      trackColor: color,
+    };
   };
+
+  // The world grows with the longest lane so every loaded segment stays reachable.
+  const maxOrdinalInNodes = (function () {
+    let max = 0;
+    nodes.forEach((n) => { max = Math.max(max, n.segmentIndex); });
+    return max;
+  })();
+  const worldWidth = Math.max(1800, 180 + (maxOrdinalInNodes + 1) * LANE_STEP + 320);
+  const worldHeight = Math.max(900, tracks.length * LANE_GAP + 820);
 
   // Drag pan handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -173,8 +149,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
   useEffect(() => {
     const activeNode = nodes.find((n) => n.id === currentUserNodeId);
     if (activeNode) {
-      const trackIdx = nodeTrackIndexMap.get(activeNode.id) ?? 0;
-      const pos = getNodePosition(activeNode, trackIdx);
+      const pos = getNodePosition(activeNode, activeNode.segmentIndex);
       setPan({ x: -pos.x * 0.7 + 200, y: -pos.y * 0.7 + 100 });
     }
   }, [currentUserNodeId, nodes]);
@@ -203,8 +178,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
   } | null = null;
 
   if (activeUserNode) {
-    const userTrackIdx = nodeTrackIndexMap.get(activeUserNode.id) ?? 0;
-    const userRawPos = getNodePosition(activeUserNode, userTrackIdx);
+    const userRawPos = getNodePosition(activeUserNode, activeUserNode.segmentIndex);
     const userPos = { x: userRawPos.x + 160, y: userRawPos.y + 480 - 45 };
 
     // Find colleague on the same track with matching category
@@ -216,8 +190,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
             c.categoryPath?.toLowerCase() === activeUserNode.category.toLowerCase()
         );
         if (peer) {
-          const peerTrackIdx = nodeTrackIndexMap.get(n.id) ?? 0;
-          const peerRawPos = getNodePosition(n, peerTrackIdx);
+          const peerRawPos = getNodePosition(n, n.segmentIndex);
           const peerPos = { x: peerRawPos.x + 160, y: peerRawPos.y + 480 - 40 };
           squadPeerInfo = {
             peer,
@@ -242,7 +215,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className="relative w-full h-full min-h-[720px] overflow-hidden select-none cursor-grab active:cursor-grabbing flex flex-col flex-1"
+      className="relative w-full h-full min-h-[720px] overflow-hidden select-none cursor-grab active:cursor-grabbing flex flex-col flex-1 bg-zinc-950 rounded-2xl"
     >
       {/* Background Cybernetic Isometric Grid */}
       <div
@@ -257,24 +230,19 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
         }}
       />
 
-      {/* Floating Blueprint Math & Formulas (matching user's reference schematic!) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden font-mono text-[11px] text-blue-500/25 select-none">
-        <span className="absolute top-20 left-36 font-semibold">{'1-m = (r^2)^2'}</span>
-        <span className="absolute top-48 left-96">{'Δm/2 + χ'}</span>
-        <span className="absolute bottom-36 left-48">{'+Σ^2   X · #'}</span>
-        <span className="absolute top-28 right-96">{'O(n^2) → λ'}</span>
-        <span className="absolute bottom-48 right-64">{'∇ · B = 0'}</span>
-      </div>
-
       {/* Mini App Google-Maps HUD Controls */}
       <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
-        {/* Roadway Streak & Daily Fuel Widget */}
+        {/* Roadway Streak & Daily Fuel Widget — streak is real data; hidden when there is none */}
         <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-xl backdrop-blur-md text-xs">
-          <div className="flex items-center gap-1 text-amber-400 font-bold" title="7-Day Roadway Study Streak Active">
-            <span>🔥</span>
-            <span>{streakDays}d Streak</span>
-          </div>
-          <span className="text-zinc-700">|</span>
+          {streakDays > 0 && (
+            <>
+              <div className="flex items-center gap-1 text-amber-400 font-bold" title="Roadway Study Streak Active">
+                <span>🔥</span>
+                <span>{streakDays}d Streak</span>
+              </div>
+              <span className="text-zinc-700">|</span>
+            </>
+          )}
           <div className="flex items-center gap-1.5 text-blue-300" title="Daily Roadway Traffic Fuel">
             <span className="text-xs">⚡</span>
             <div className="w-14 h-2 bg-zinc-800 rounded-full overflow-hidden p-0.5">
@@ -316,8 +284,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
               setZoom(0.95);
               const activeNode = nodes.find((n) => n.id === currentUserNodeId);
               if (activeNode) {
-                const trackIdx = nodeTrackIndexMap.get(activeNode.id) ?? 0;
-                const pos = getNodePosition(activeNode, trackIdx);
+                const pos = getNodePosition(activeNode, activeNode.segmentIndex);
                 setPan({ x: -pos.x * 0.7 + 200, y: -pos.y * 0.7 + 100 });
               } else {
                 setPan({ x: 0, y: 0 });
@@ -347,6 +314,19 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
           <span className="w-2 h-2 rounded-full bg-emerald-400" />
           <span>Segments: {loadedSegments}/{totalSegments}</span>
         </div>
+
+        {/* On-demand segment loader (the owner of the 7-segment window semantics) */}
+        {onLoadMoreSegments && hasMoreSegments && (
+          <button
+            onClick={onLoadMoreSegments}
+            disabled={isLoadingSegments}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900/90 hover:bg-zinc-800 border border-blue-500/40 text-blue-300 rounded-xl font-sans text-xs font-semibold shadow-xl backdrop-blur-md transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+            title="Load the next 7 road segments on demand"
+          >
+            <Plus className={`w-3.5 h-3.5 ${isLoadingSegments ? 'animate-spin' : ''}`} />
+            <span>{isLoadingSegments ? 'Loading…' : `Load Next 7`}</span>
+          </button>
+        )}
       </div>
 
       {/* Main Pan/Zoom World Stage */}
@@ -356,11 +336,11 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         }}
       >
-        <div className="relative w-[1800px] h-[900px] shrink-0">
+        <div className="relative shrink-0" style={{ width: `${worldWidth}px`, height: `${worldHeight}px` }}>
           {/* ================= SVG 3D ROAD HIGHWAYS & CIRCUITS ================= */}
           <svg
             className="absolute inset-0 w-full h-full overflow-visible pointer-events-none"
-            viewBox="0 0 1800 900"
+            viewBox={`0 0 ${worldWidth} ${worldHeight}`}
           >
             <defs>
               {/* Neon arrow markers */}
@@ -380,45 +360,6 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
             </defs>
 
             {/* Central Junction Roads branching out */}
-            {/* Origin Hub Base Platform (Elevated 3D Hex/Square Hub) */}
-            <g transform="translate(40, 480)">
-              {/* Base shadow */}
-              <polygon
-                points="0,40 120,-30 240,40 120,110"
-                fill="#09090b"
-                opacity="0.9"
-              />
-              {/* 3D Depth Extrusion */}
-              <polygon
-                points="0,30 0,50 120,120 120,100"
-                fill="#18181b"
-              />
-              <polygon
-                points="240,30 240,50 120,120 120,100"
-                fill="#27272a"
-              />
-              {/* Top Face */}
-              <polygon
-                points="0,30 120,-40 240,30 120,100"
-                fill="url(#cyanRoadGlow)"
-                opacity="0.25"
-                stroke="#60a5fa"
-                strokeWidth="2"
-              />
-              {/* Central Glowing Icon Base */}
-              <circle cx="120" cy="30" r="28" fill="#18181b" stroke="#60a5fa" strokeWidth="2" />
-              <text
-                x="120"
-                y="34"
-                textAnchor="middle"
-                fill="#60a5fa"
-                fontSize="12"
-                fontWeight="bold"
-                fontFamily="JetBrains Mono"
-              >
-                HUB
-              </text>
-            </g>
 
             {/* Render 3D Roads for each Track */}
             {tracks.map((track) => {
@@ -428,8 +369,8 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
               // Generate coordinate list starting from Hub (160, 510)
               const points: { x: number; y: number }[] = [
                 { x: 160, y: 510 },
-                ...trackNodes.map((n, i) => {
-                  const pos = getNodePosition(n, i);
+                ...trackNodes.map((n) => {
+                  const pos = getNodePosition(n, n.segmentIndex);
                   return { x: pos.x + 160, y: pos.y + 480 };
                 }),
               ];
@@ -498,8 +439,8 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                   />
 
                   {/* Stepped Pedestal Bases along the road for each milestone */}
-                  {trackNodes.map((node, i) => {
-                    const pos = getNodePosition(node, i);
+                  {trackNodes.map((node) => {
+                    const pos = getNodePosition(node, node.segmentIndex);
                     const cx = pos.x + 160;
                     const cy = pos.y + 480;
 
@@ -527,6 +468,47 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                 </g>
               );
             })}
+
+            {/* Origin Hub Base Platform (Elevated 3D Hex/Square Hub) — painted after the roads,
+                so the hub sits ABOVE the road layer instead of being buried under it */}
+            <g transform="translate(40, 480)">
+              {/* Base shadow */}
+              <polygon
+                points="0,40 120,-30 240,40 120,110"
+                fill="#09090b"
+                opacity="0.9"
+              />
+              {/* 3D Depth Extrusion */}
+              <polygon
+                points="0,30 0,50 120,120 120,100"
+                fill="#18181b"
+              />
+              <polygon
+                points="240,30 240,50 120,120 120,100"
+                fill="#27272a"
+              />
+              {/* Top Face */}
+              <polygon
+                points="0,30 120,-40 240,30 120,100"
+                fill="url(#cyanRoadGlow)"
+                opacity="0.25"
+                stroke="#60a5fa"
+                strokeWidth="2"
+              />
+              {/* Central Glowing Icon Base */}
+              <circle cx="120" cy="30" r="28" fill="#18181b" stroke="#60a5fa" strokeWidth="2" />
+              <text
+                x="120"
+                y="34"
+                textAnchor="middle"
+                fill="#60a5fa"
+                fontSize="12"
+                fontWeight="bold"
+                fontFamily="JetBrains Mono"
+              >
+                HUB
+              </text>
+            </g>
 
                   {/* Routing Laser Connection Beam for Study Squad (Co-Op Shared Velocity Boost) */}
                   {/* Performance: static composite glow (layered strokes, no SVG blur filter, no CSS animation) */}
@@ -573,8 +555,10 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
 
           {/* Each card stands upright on its pedestal with minimal text: TITLE ONLY */}
           {nodes.map((node) => {
-            const trackIdx = nodeTrackIndexMap.get(node.id) ?? 0;
-            const pos = getNodePosition(node, trackIdx);
+            // Position by the node's real ordinal in its lane (segmentIndex), never by
+            // the index inside the currently loaded window — the road must not reflow
+            // when more segments load.
+            const pos = getNodePosition(node, node.segmentIndex);
             const cx = pos.x + 160;
             const cy = pos.y + 480;
             const isCurrentUserHere = node.id === currentUserNodeId;
@@ -583,6 +567,8 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
             const isCompleted = node.status === 'completed';
             const isUnlocked = node.status === 'unlocked';
             const isLocked = node.status === 'locked';
+            // Palette cycles by lane position so any track count stays on-theme.
+            const themeIdx = ((getTrackIdx(node.trackId) % 3) + 3) % 3;
 
             let cardTheme = {
               border: 'border-blue-400/80',
@@ -592,7 +578,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
               badge: 'bg-blue-500/20 text-blue-300 border-blue-400/40',
             };
 
-            if (node.trackId === 'ux-ui-design') {
+            if (themeIdx === 1) {
               cardTheme = {
                 border: 'border-purple-400/80',
                 glow: 'shadow-[0_0_20px_rgba(192,132,252,0.35)]',
@@ -600,7 +586,7 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                 text: 'text-purple-300',
                 badge: 'bg-purple-500/20 text-purple-300 border-purple-400/40',
               };
-            } else if (node.trackId === 'cybersecurity') {
+            } else if (themeIdx === 2) {
               cardTheme = {
                 border: 'border-emerald-400/80',
                 glow: 'shadow-[0_0_20px_rgba(52,211,153,0.35)]',
@@ -652,10 +638,10 @@ export const IsometricRoadmapView: React.FC<IsometricRoadmapViewProps> = ({
                     {/* Downward Location Beacon Pin */}
                     <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-blue-400 -mt-0.5 filter drop-shadow-[0_2px_4px_rgba(56,189,248,0.8)]" />
 
-                    {/* "YOU" Floating Pill with 7-Day Streak */}
+                    {/* "YOU" Floating Pill with real streak (only when one exists) */}
                     <div className="mt-0.5 flex items-center gap-1 px-2 py-0.5 bg-blue-400 text-zinc-950 text-[9px] font-black rounded-full shadow-lg tracking-wider">
                       <span>YOU</span>
-                      {hasNeonHalo && <span title="7-Day Roadway Streak Active">🔥 7d</span>}
+                      {streakDays > 0 && <span title="Roadway Streak Active">🔥 {streakDays}d</span>}
                     </div>
                   </div>
                 )}

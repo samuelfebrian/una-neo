@@ -46,6 +46,8 @@ export interface PathNode {
   level: 'Foundational' | 'Intermediate' | 'Advanced' | 'Mastery';
   colleaguesHere: Colleague[];
   externalUrl?: string;
+  /** Real lesson pass progress percent (0–100) when the node maps to a UNA lesson. */
+  progressPercent?: number;
   // Community Mechanics
   communityGate?: {
     requiredCompletedCount: number;

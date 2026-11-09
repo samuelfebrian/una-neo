@@ -425,6 +425,20 @@ export const coursesApi = {
         }
     },
 
+    /** Node ids of this course the signed-in viewer has pass records for ([] for guests). */
+    async passedNodes(entryId: number): Promise<number[]> {
+        try {
+            const payload = unwrap(
+                await fetcher(`/api.php?r=bx_courses/get_passed_nodes/&params[]=${entryId}`)
+            );
+            const ids = payload?.node_ids;
+            return Array.isArray(ids) ? ids.map((id: any) => Number(id)).filter(Boolean) : [];
+        } catch (e) {
+            console.warn('courses api: passedNodes failed', e);
+            return [];
+        }
+    },
+
     async passNode(nodeId: number): Promise<void> {
         try {
             await fetcher(`/api.php?r=bx_courses/pass_node/&params[]=${nodeId}`);

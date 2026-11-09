@@ -4,21 +4,34 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'app/lib/hooks/router';
+import { useCurrentUser } from 'app/context/user';
 import { IsometricRoadmapView } from './IsometricRoadmapView';
 import { NodeDetailSheet } from './NodeDetailSheet';
 import { pathwayApi } from './pathwayApi';
+import { buildPathwayFromOutlines, ActiveCourseInfo } from './buildPathway';
+import { coursesApi } from '../api';
+import { appPath } from '../apps/app-path';
 import type { Pathway, PathNode, PathTrack } from './types';
 
-export function PathwayCanvas() {
+export interface PathwayCanvasProps {
+  /** Active courses (in-progress first, max 3) — each renders as one track lane. */
+  activeCourses: ActiveCourseInfo[];
+}
+
+export function PathwayCanvas({ activeCourses = [] }: PathwayCanvasProps) {
+  const router = useRouter();
+  const { currentUser } = useCurrentUser();
+
   const [pathway, setPathway] = useState<Pathway | null>(null);
   const [tracks, setTracks] = useState<PathTrack[]>([]);
   const [nodes, setNodes] = useState<PathNode[]>([]);
   const [allExistingNodes, setAllExistingNodes] = useState<PathNode[]>([]);
 
-  const [loadedSegments, setLoadedSegments] = useState(7);
-  const [totalSegments, setTotalSegments] = useState(9);
-  const [hasMoreSegments, setHasMoreSegments] = useState(true);
-  const [nextOffset, setNextOffset] = useState(7);
+  const [loadedSegments, setLoadedSegments] = useState(0);
+  const [totalSegments, setTotalSegments] = useState(0);
+  const [hasMoreSegments, setHasMoreSegments] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
   const [isLoadingSegments, setIsLoadingSegments] = useState(false);
 
   const [selectedNode, setSelectedNode] = useState<PathNode | null>(null);
@@ -63,28 +76,74 @@ export function PathwayCanvas() {
     }
   }, []);
 
+  // Rebuild the window keys only when the course set or viewer identity changes,
+  // not on every store update.
+  const activeKey = activeCourses.map((c) => c.id).join(',');
+  const viewerKey = currentUser ? String(currentUser.id) : '';
+
   useEffect(() => {
     let cancelled = false;
     const initialize = async () => {
-      const [pw, trks] = await Promise.all([
-        pathwayApi.getPathway(),
-        pathwayApi.getTracks(),
+      const courses = activeCourses.slice(0, 3);
+      if (courses.length === 0) return;
+
+      const viewer = currentUser
+        ? {
+            id: currentUser.id,
+            name: currentUser.display_name || 'You',
+            avatarUrl: currentUser.avatar || '',
+          }
+        : undefined;
+
+      const [outlines, passesArr] = await Promise.all([
+        Promise.all(
+          courses.map(async (course) => {
+            try {
+              return await coursesApi.fullOutline(course.id, course.slug);
+            } catch {
+              return null;
+            }
+          })
+        ),
+        Promise.all(
+          courses.map(async (course) => {
+            try {
+              return await coursesApi.passedNodes(course.id);
+            } catch {
+              return [];
+            }
+          })
+        ),
       ]);
       if (cancelled) return;
-      setPathway(pw);
-      setTracks(trks);
-      fetchSegments(false, 0);
+
+      const built = buildPathwayFromOutlines(
+        courses,
+        new Map(courses.map((course, index) => [course.id, outlines[index] ?? null])),
+        viewer,
+        new Map(courses.map((course, index) => [course.id, passesArr[index] ?? []]))
+      );
+      pathwayApi.setDataSource(built);
+      if (cancelled) return;
+
+      // fetchSegments only sets pathway/nodes from the response — tracks and the
+      // pathway snapshot come straight from the built model (same as the creator's
+      // getPathway + getTracks initialization).
+      setPathway(built.pathway);
+      setTracks(built.tracks);
+      await fetchSegments(false, built.initialOffset);
     };
     initialize();
     return () => {
       cancelled = true;
     };
-  }, [fetchSegments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey, viewerKey, fetchSegments]);
 
   const handleLoadMoreSegments = async () => {
     if (!hasMoreSegments || isLoadingSegments) return;
     await fetchSegments(true, nextOffset);
-    showToast(`Loaded Segments ${nextOffset + 1}-${Math.min(nextOffset + 7, totalSegments)} on demand via API`);
+    showToast(`Loaded segments ${nextOffset + 1}-${Math.min(nextOffset + 7, totalSegments)} on demand`);
   };
 
   const handleCompleteNode = async (nodeId: string, notes?: string) => {
@@ -124,7 +183,22 @@ export function PathwayCanvas() {
     showToast('Your avatar is now positioned on this milestone.');
   };
 
-  const currentUserNodeId = pathway?.currentUser.currentNodeId || 'node-da-3';
+  const openNode = (url?: string) => {
+    if (!url) return;
+    router.push(appPath(url));
+  };
+
+  const currentUserNodeId = pathway?.currentUser.currentNodeId || '';
+
+  if (activeCourses.length === 0) {
+    return (
+      <div className="pathway-canvas relative w-full h-full min-h-[720px] flex items-center justify-center bg-zinc-950">
+        <p className="max-w-sm px-6 text-center text-sm text-zinc-400 font-medium">
+          No active course yet. Join or continue a course and your learning road appears here.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="pathway-canvas relative w-full h-full min-h-[720px]">
@@ -146,11 +220,11 @@ export function PathwayCanvas() {
         totalSegments={totalSegments}
         loadedSegments={loadedSegments}
         currentUserAvatar={pathway?.currentUser.avatar || ''}
-        currentUserName={pathway?.currentUser.name || 'Jordan Taylor'}
+        currentUserName={pathway?.currentUser.name || 'You'}
         onOpenAdmin={() => {}}
-        streakDays={pathway?.currentUser.streakDays || 7}
-        fuelPercentage={pathway?.currentUser.fuelPercentage || 100}
-        hasNeonHalo={pathway?.currentUser.hasNeonHalo ?? true}
+        streakDays={pathway?.currentUser.streakDays ?? 0}
+        fuelPercentage={pathway?.currentUser.fuelPercentage ?? 0}
+        hasNeonHalo={pathway?.currentUser.hasNeonHalo ?? false}
         onGateCelebration={() => {
           fetchSegments(false, 0);
         }}
@@ -163,6 +237,7 @@ export function PathwayCanvas() {
         onCompleteNode={handleCompleteNode}
         onMoveAvatar={handleMoveAvatar}
         isCurrentUserHere={selectedNode?.id === currentUserNodeId}
+        onOpenNode={openNode}
       />
     </div>
   );

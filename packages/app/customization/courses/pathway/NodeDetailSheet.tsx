@@ -30,6 +30,8 @@ interface NodeDetailSheetProps {
   onCompleteNode: (nodeId: string, notes?: string) => Promise<void>;
   onMoveAvatar: (nodeId: string) => Promise<void>;
   isCurrentUserHere: boolean;
+  /** Real lesson navigation (cards mapped to UNA lessons carry externalUrl). */
+  onOpenNode?: (url?: string) => void;
 }
 
 export const NodeDetailSheet: React.FC<NodeDetailSheetProps> = ({
@@ -39,12 +41,16 @@ export const NodeDetailSheet: React.FC<NodeDetailSheetProps> = ({
   onCompleteNode,
   onMoveAvatar,
   isCurrentUserHere,
+  onOpenNode,
 }) => {
   const [completionNotes, setCompletionNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   if (!node) return null;
+
+  // Real lesson cards point at the UNA lesson page; passing happens there.
+  const isLesson = Boolean(node.externalUrl);
 
   // Resolve prerequisite titles & statuses
   const prerequisiteDetails = node.prerequisites.map((reqId) => {
@@ -171,22 +177,22 @@ export const NodeDetailSheet: React.FC<NodeDetailSheetProps> = ({
             </p>
           </div>
 
-          {/* Stats Bar */}
+          {/* Stats Bar — real data only (pass progress for lesson cards) */}
           <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-950/60 rounded-xl border border-zinc-800 text-center">
             <div>
               <span className="block text-[11px] text-zinc-500 uppercase tracking-wider">
-                XP Reward
+                {isLesson ? 'Progress' : 'XP Reward'}
               </span>
               <span className="text-sm font-mono font-bold text-blue-400">
-                +{node.xpPoints} XP
+                {isLesson ? `${node.progressPercent ?? 0}%` : `+${node.xpPoints} XP`}
               </span>
             </div>
             <div>
               <span className="block text-[11px] text-zinc-500 uppercase tracking-wider">
-                Estimated Time
+                {isLesson ? 'Lesson' : 'Estimated Time'}
               </span>
               <span className="text-sm font-mono font-bold text-white">
-                {node.durationHours} Hours
+                {isLesson ? `#${node.segmentIndex + 1}` : `${node.durationHours} Hours`}
               </span>
             </div>
             <div>
@@ -249,22 +255,24 @@ export const NodeDetailSheet: React.FC<NodeDetailSheetProps> = ({
             )}
           </div>
 
-          {/* Skills Gained */}
-          <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-              Skills & Competencies Acquired
-            </h4>
-            <div className="flex flex-wrap gap-1.5">
-              {node.skillsGained.map((skill) => (
-                <span
-                  key={skill}
-                  className="px-2.5 py-1 bg-zinc-800/90 text-blue-300 border border-blue-500/20 text-xs rounded-lg font-medium"
-                >
-                  {skill}
-                </span>
-              ))}
+          {/* Skills / real theme grouping */}
+          {node.skillsGained.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                {isLesson ? 'Theme' : 'Skills & Competencies Acquired'}
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {node.skillsGained.map((skill) => (
+                  <span
+                    key={skill}
+                    className="px-2.5 py-1 bg-zinc-800/90 text-blue-300 border border-blue-500/20 text-xs rounded-lg font-medium"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Portfolio Artifact / Deliverable with 1-Click Peer Reactions */}
           {node.portfolioArtifact && (
@@ -446,7 +454,7 @@ export const NodeDetailSheet: React.FC<NodeDetailSheetProps> = ({
             {node.status === 'completed' ? (
               <div className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                 <Check className="w-4 h-4 stroke-[3]" />
-                <span>Completed ({node.completedAt ? new Date(node.completedAt).toLocaleDateString() : 'Verified'})</span>
+                <span>{node.completedAt ? `Completed (${new Date(node.completedAt).toLocaleDateString()})` : 'Completed'}</span>
               </div>
             ) : node.status === 'locked' && !allPrereqsMet ? (
               <button
@@ -455,6 +463,15 @@ export const NodeDetailSheet: React.FC<NodeDetailSheetProps> = ({
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span>Locked by Prerequisites</span>
+              </button>
+            ) : isLesson ? (
+              <button
+                onClick={() => onOpenNode?.(node.externalUrl)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-zinc-950 bg-blue-400 hover:bg-blue-300 rounded-lg shadow-lg shadow-blue-400/20 transition-all active:scale-95"
+                title="Open this lesson in the course player"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>{node.status === 'in_progress' ? 'Continue Lesson' : 'Open Lesson'}</span>
               </button>
             ) : (
               <button

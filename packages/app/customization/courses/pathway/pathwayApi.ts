@@ -27,6 +27,14 @@ const STORAGE_KEYS = {
   TRACKS: 'mini_app_tracks_data_v2',
 };
 
+/** Shape accepted by setDataSource(): the built real-data model (buildPathway.ts). */
+export interface PathwayDataSource {
+  pathway: Pathway;
+  tracks: PathTrack[];
+  nodes: PathNode[];
+  history?: PathwayHistoryEvent[];
+}
+
 // Internal in-memory and persistent cache
 class PathwayDatabaseService {
   private pathway: Pathway;
@@ -34,12 +42,37 @@ class PathwayDatabaseService {
   private history: PathwayHistoryEvent[];
   private tracks: PathTrack[];
 
+  /**
+   * false = creator-style localStorage seed store (create/complete/study-squad handlers).
+   * true = injected real data from buildPathway(): localStorage content is never
+   * written back (the fake seed must not overwrite the real model, and real data
+   * must not be cached locally).
+   */
+  private sourceIsReal = false;
+
   constructor() {
     this.pathway = this.loadFromStorage(STORAGE_KEYS.PATHWAYS, INITIAL_PATHWAY);
     this.nodes = this.loadFromStorage(STORAGE_KEYS.NODES, ALL_PATH_NODES);
     this.history = this.loadFromStorage(STORAGE_KEYS.HISTORY, INITIAL_HISTORY);
     this.tracks = this.loadFromStorage(STORAGE_KEYS.TRACKS, INITIAL_TRACKS);
     this.hydrateColleagues();
+  }
+
+  /**
+   * Inject the real (buildPathway) data model exactly once per load; the existing
+   * pagination/history handlers then serve this in-memory data without changes.
+   */
+  public setDataSource(data: PathwayDataSource): void {
+    this.pathway = JSON.parse(JSON.stringify(data.pathway));
+    this.tracks = JSON.parse(JSON.stringify(data.tracks));
+    this.nodes = JSON.parse(JSON.stringify(data.nodes));
+    this.history = data.history ? JSON.parse(JSON.stringify(data.history)) : [];
+    this.sourceIsReal = true;
+    try {
+      Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+    } catch {
+      // Storage unavailable — state stays in memory, which is where the canvas reads it.
+    }
   }
 
   private hydrateColleagues(): void {
@@ -78,6 +111,7 @@ class PathwayDatabaseService {
   }
 
   private persistAll(): void {
+    if (this.sourceIsReal) return;
     this.saveToStorage(STORAGE_KEYS.PATHWAYS, this.pathway);
     this.saveToStorage(STORAGE_KEYS.NODES, this.nodes);
     this.saveToStorage(STORAGE_KEYS.HISTORY, this.history);
@@ -85,6 +119,7 @@ class PathwayDatabaseService {
   }
 
   public resetToDefaults(): void {
+    if (this.sourceIsReal) return;
     this.pathway = JSON.parse(JSON.stringify(INITIAL_PATHWAY));
     this.nodes = JSON.parse(JSON.stringify(ALL_PATH_NODES));
     this.history = JSON.parse(JSON.stringify(INITIAL_HISTORY));
@@ -839,6 +874,8 @@ class PathwayDatabaseService {
   }
 
   private simulateLatency(ms: number): Promise<void> {
+    // Real data is already in memory (fetched once by the canvas); no artificial delay.
+    if (this.sourceIsReal) return Promise.resolve();
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

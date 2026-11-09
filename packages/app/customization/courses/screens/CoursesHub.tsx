@@ -78,6 +78,22 @@ export function CoursesHub({
 
   const primaryFeatured = featuredCourses[featuredIndex] ?? featuredCourses[0];
 
+  // Learning-road tracks: the student's in-progress courses (max 3), else the newest
+  // course on the hub — real course ids only, never mock data.
+  const pathwayCourses = (
+    inProgressCourses.length > 0
+      ? inProgressCourses
+      : [featuredCourses[0], recentCourses[0], topCourses[0]].filter(
+          (course): course is (typeof featuredCourses)[number] => Boolean(course)
+        )
+  )
+    .filter(
+      (course, index, all) =>
+        all.findIndex((other) => other.id === course.id) === index
+    )
+    .slice(0, 3)
+    .map((course) => ({ id: course.id, slug: course.slug, title: course.title }));
+
   return (
     <div className={`space-y-12 ${className}`}>
       {/* ---------------- PATHWAY ROAD CANVAS ---------------- */}
@@ -95,7 +111,7 @@ export function CoursesHub({
             </Button>
           </div>
         )}
-        <PathwayCanvas />
+        <PathwayCanvas activeCourses={pathwayCourses} />
       </div>
 
       {/* ---------------- CONTINUE LEARNING RAIL ---------------- */}
