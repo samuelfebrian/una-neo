@@ -357,16 +357,25 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
         ...(isNoIndex && { robots: { index: false } }),
         alternates: { canonical: url },
         manifest: '/manifest.json',
-        icons: {
-            icon: [
-                // PNG for link previews and clients without SVG icons; the SVG last, for
-                // browsers that take the last icon they can use.
-                ...(metaIcons.favicon ? [{ url: metaIcons.favicon, type: metaIcons.favicon.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon', sizes: 'any' } as const] : []),
-                { url: iconPng, type: 'image/png', sizes: '192x192' },
-                { url: metaIcons.favicon_svg || (isClientProject ? '/static/favicon.svg' : '/favicon.svg'), type: 'image/svg+xml' },
-            ],
-            apple: metaIcons.apple || iconPng,
-        },
+        icons: (() => {
+            const studioFavicon = metaIcons.favicon ? { url: metaIcons.favicon, type: metaIcons.favicon.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon', sizes: 'any' } as const : null;
+            const studioSvg = metaIcons.favicon_svg ? { url: metaIcons.favicon_svg, type: 'image/svg+xml' } as const : null;
+            const hasStudioIcon = !!(studioFavicon || studioSvg);
+            const icon: Array<{ url: string; type?: string; sizes?: string }> = [
+                ...(studioFavicon ? [studioFavicon] : []),
+                ...(studioSvg ? [studioSvg] : []),
+                ...(!hasStudioIcon ? [
+                    { url: iconPng, type: 'image/png', sizes: '192x192' },
+                    { url: isClientProject ? '/static/favicon.svg' : '/favicon.svg', type: 'image/svg+xml' },
+                ] : []),
+            ];
+            const iconsOut: { icon: Array<{ url: string; type?: string; sizes?: string }>; apple?: string } = { icon };
+            // With a Studio icon set, drop this build's static PNG from the apple link:
+            // UNA falls back to table template art, a homeowner icon set wins.
+            if (metaIcons.apple) iconsOut.apple = metaIcons.apple;
+            else if (!hasStudioIcon) iconsOut.apple = iconPng;
+            return iconsOut;
+        })(),
         other,
         openGraph: {
             title: name,
